@@ -1,0 +1,102 @@
+// Example DBML schema for Zynx basic example
+// This demonstrates a simple blog application
+
+Project basic_example {
+  database_type: 'PostgreSQL'
+  Note: 'Basic Zynx example - Simple blog application'
+}
+
+Table users {
+  id uuid [pk, default: `gen_random_uuid()`]
+  email varchar(255) [unique, not null]
+  username varchar(50) [unique, not null]
+  password_hash varchar(255) [not null]
+  display_name varchar(100)
+  bio text
+  avatar_url varchar(500)
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Note: 'User accounts and profiles'
+}
+
+Table posts {
+  id uuid [pk, default: `gen_random_uuid()`]
+  author_id uuid [ref: > users.id, not null]
+  title varchar(200) [not null]
+  slug varchar(200) [unique, not null]
+  content text [not null]
+  excerpt text
+  featured_image_url varchar(500)
+  status varchar(20) [default: 'draft', note: 'draft, published, archived']
+  published_at timestamp
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  Note: 'Blog posts and articles'
+}
+
+Table categories {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(100) [unique, not null]
+  slug varchar(100) [unique, not null]
+  description text
+  color varchar(7) [note: 'Hex color code']
+  created_at timestamp [default: `now()`]
+  
+  Note: 'Post categories'
+}
+
+Table post_categories {
+  post_id uuid [ref: > posts.id, not null]
+  category_id uuid [ref: > categories.id, not null]
+  
+  Note: 'Many-to-many relationship between posts and categories'
+}
+
+Table comments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  post_id uuid [ref: > posts.id, not null]
+  author_id uuid [ref: > users.id]
+  author_name varchar(100) [note: 'For anonymous comments']
+  author_email varchar(255) [note: 'For anonymous comments']
+  content text [not null]
+  is_approved boolean [default: false]
+  created_at timestamp [default: `now()`]
+  
+  Note: 'Post comments from users or anonymous visitors'
+}
+
+// Indexes for performance
+Table posts {
+  indexes {
+    (author_id) [name: 'idx_posts_author']
+    (status, published_at) [name: 'idx_posts_status_published']
+    (slug) [name: 'idx_posts_slug']
+    (created_at) [name: 'idx_posts_created']
+  }
+}
+
+Table comments {
+  indexes {
+    (post_id, is_approved) [name: 'idx_comments_post_approved']
+    (author_id) [name: 'idx_comments_author']
+    (created_at) [name: 'idx_comments_created']
+  }
+}
+
+Table users {
+  indexes {
+    (email) [name: 'idx_users_email']
+    (username) [name: 'idx_users_username']
+    (is_active) [name: 'idx_users_active']
+  }
+}
+
+Table post_categories {
+  indexes {
+    (post_id, category_id) [name: 'idx_post_categories_unique', unique: true]
+    (category_id) [name: 'idx_post_categories_category']
+  }
+}

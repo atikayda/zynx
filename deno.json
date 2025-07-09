@@ -1,0 +1,42 @@
+{
+  "name": "@zynx/migrations",
+  "version": "1.0.0",
+  "description": "🦎 The Axolotl-Powered DBML Migration System for Deno",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zynx-org/zynx.git"
+  },
+  "exports": {
+    ".": "./mod.ts",
+    "./cli": "./cli.ts"
+  },
+  "imports": {
+    "@std/cli": "jsr:@std/cli@^1.0.0",
+    "@std/fs": "jsr:@std/fs@^1.0.0",
+    "@std/path": "jsr:@std/path@^1.0.0",
+    "@dbml/core": "npm:@dbml/core@3.5.1"
+  },
+  "tasks": {
+    "dev": "deno run --allow-all --watch ./examples/basic/migrate.ts",
+    "test": "deno test --allow-all tests/",
+    "test:watch": "deno test --allow-all --watch tests/",
+    "lint": "deno lint src/ tests/ examples/",
+    "fmt": "deno fmt src/ tests/ examples/ *.ts *.md",
+    "check": "deno check mod.ts cli.ts",
+    "build": "deno run --allow-all scripts/build.ts",
+    "example:basic": "cd examples/basic && deno run --allow-all migrate.ts",
+    "example:advanced": "cd examples/advanced && deno run --allow-all migrate.ts",
+    "cli": "deno run --allow-all cli.ts",
+    "cli:help": "deno run --allow-all cli.ts --help",
+    "cli:init": "deno run --allow-all cli.ts init",
+    "cli:generate": "deno run --allow-all cli.ts generate",
+    "cli:run": "deno run --allow-all cli.ts run",
+    "cli:status": "deno run --allow-all cli.ts status",
+    "cli:version": "deno run --allow-all cli.ts --version"
+  },
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

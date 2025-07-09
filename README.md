@@ -1,12 +1,23 @@
-# 🦎 Zynx
+# Zynx
 
-> **The Axolotl-Powered DBML Migration System for Deno**
+<div align="center">
+  <img src="assets/zynx-icon.webp" alt="Zynx" width="160" height="160">
+  <br><br>
+  <strong>🎯 The Axolotl-Powered DBML Migration System for Deno</strong>
+  <br><br>
 
-[![JSR](https://jsr.io/badges/@atikayda/zynx)](https://jsr.io/@atikayda/zynx)
-[![CI](https://github.com/atikayda/zynx/workflows/CI/badge.svg)](https://github.com/atikayda/zynx/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![JSR](https://jsr.io/badges/@atikayda/zynx)](https://jsr.io/@atikayda/zynx)
+  [![CI](https://github.com/atikayda/zynx/workflows/CI/badge.svg)](https://github.com/atikayda/zynx/actions)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Deno](https://img.shields.io/badge/Deno-1.45+-brightgreen?logo=deno)](https://deno.land)
+
+</div>
+
+---
 
 **Zynx** is a powerful, Deno-native database migration system that transforms your DBML schema definitions into seamless PostgreSQL migrations. Just like how axolotls regenerate their limbs perfectly, Zynx regenerates your database schema with precision and grace.
+
+![Zynx Mascot](./assets/zynx-mascot.webp)
 
 ## ✨ Features
 

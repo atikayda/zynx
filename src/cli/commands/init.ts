@@ -134,7 +134,7 @@ Indexes {
  * Configure your database connection and migration settings
  */
 
-import type { ZynxConfig } from "./zynx/src/types.ts";
+import type { ZynxConfig } from "jsr:@atikayda/zynx";
 
 export const config: ZynxConfig = {
   // Database connection settings
@@ -201,7 +201,7 @@ This directory contains your database migrations generated and managed by Zynx.
 
 ## Need Help?
 
-Check the Zynx documentation: https://deno.land/x/zynx
+Check the Zynx documentation: https://jsr.io/@atikayda/zynx
 
 🌊 Happy migrating with your friendly axolotl!`;
     

@@ -51,7 +51,7 @@ export class StatusCommand implements Command {
       // Migration table info
       console.log(`\n📋 Migration Table:`);
       console.log(`  Name: ${config.migrations.tableName}`);
-      console.log(`  Status: ${status.migrationTableExists ? "✅ Exists" : "❌ Missing"}`);
+      console.log(`  Status: ${status.migrationsTableExists ? "✅ Exists" : "❌ Missing"}`);
       
       // Current migration
       console.log(`\n🔢 Current Migration:`);
@@ -94,7 +94,7 @@ export class StatusCommand implements Command {
       // Health check
       console.log(`\n🦎 Health Check:`);
       const isHealthy = status.databaseConnected && 
-                       status.migrationTableExists && 
+                       status.migrationsTableExists && 
                        status.pendingMigrations.length === 0;
       
       if (isHealthy) {
@@ -104,7 +104,7 @@ export class StatusCommand implements Command {
         if (!status.databaseConnected) {
           console.log(`    - Database connection failed`);
         }
-        if (!status.migrationTableExists) {
+        if (!status.migrationsTableExists) {
           console.log(`    - Migration table doesn't exist (run 'zynx run' to create)`);
         }
         if (status.pendingMigrations.length > 0) {

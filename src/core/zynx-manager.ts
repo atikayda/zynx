@@ -8,18 +8,22 @@
 import { DBMLParser } from "./dbml-parser.ts";
 import { SchemaDiffer } from "./schema-differ.ts";
 import { PostgreSQLGenerator } from "../generators/postgresql.ts";
-import { DatabaseConnection, createDatabaseConnection } from "../utils/db-utils.ts";
+import { createDatabaseConnection, DatabaseUtils, type DatabaseConnection } from "../utils/db-utils.ts";
 import { FileManager } from "../utils/file-utils.ts";
+import { ErrorHandler } from "../utils/errors.ts";
 import type {
   ZynxConfig,
-  DatabaseConfig,
   GenerateOptions,
   RunOptions,
   RollbackOptions,
   GenerationResult,
   MigrationResult,
   RollbackResult,
-  DatabaseStatus
+  DatabaseStatus,
+  MigrationFile,
+  ZynxMigrationStatus,
+  SchemaChange,
+  ZynxError
 } from "../types.ts";
 
 /**
@@ -28,11 +32,16 @@ import type {
  * @example
  * ```typescript
  * const zynx = new ZynxManager({
- *   dbmlPath: "./database.dbml",
- *   migrationsDir: "./migrations",
  *   database: {
  *     type: "postgresql",
  *     connectionString: "postgresql://localhost:5432/myapp"
+ *   },
+ *   migrations: {
+ *     directory: "./migrations",
+ *     tableName: "zynx_migrations"
+ *   },
+ *   schema: {
+ *     path: "./database.dbml"
  *   }
  * });
  * 
@@ -44,125 +53,113 @@ export class ZynxManager {
   private config: ZynxConfig;
   private parser: DBMLParser;
   private differ: SchemaDiffer;
-  private generator: GeneratorPlugin;
+  private generator: PostgreSQLGenerator;
   private db: DatabaseConnection;
+  private dbUtils: DatabaseUtils;
   private files: FileManager;
 
   constructor(config: ZynxConfig) {
     this.config = config;
     this.parser = new DBMLParser();
     this.differ = new SchemaDiffer();
-    this.generator = config.generator || new PostgreSQLGenerator();
-    this.db = new DatabaseConnection(config.database);
-    this.files = new FileManager(config.migrationsDir);
-
-    // Apply default settings
-    this.config.settings = {
-      migrationTableName: "_migrations",
-      snapshotName: "snapshot",
-      migrationPrefix: "",
-      transactionMode: "single",
-      maxConcurrentMigrations: 1,
-      ...config.settings
-    };
+    this.generator = new PostgreSQLGenerator();
+    this.db = createDatabaseConnection(config.database);
+    this.dbUtils = new DatabaseUtils(this.db);
+    this.files = new FileManager(config.migrations.directory);
   }
 
   /**
    * 🧬 Generate migrations from DBML changes
-   * 
-   * Compares current database.dbml with the last snapshot to generate
-   * incremental migrations, then updates the snapshot.
    */
-  async generate(): Promise<ZynxResult> {
+  async generate(options: GenerateOptions = {}): Promise<GenerationResult> {
     const startTime = Date.now();
     
     try {
-      await this.config.hooks?.beforeGenerate?.();
-      
       console.log("🦎 Zynx is analyzing your schema...");
       
-      // Read current DBML
-      const currentDbml = await this.files.readFile(this.config.dbmlPath);
+      // Initialize file system
+      await this.files.initialize();
+      
+      // Read current DBML schema
+      const currentDbml = await this.readSchemaFile();
       const currentSchema = await this.parser.parse(currentDbml);
       
-      // Check if snapshot exists
-      const snapshotPath = `${this.config.settings!.snapshotName}.dbml`;
-      const snapshotExists = await this.files.exists(snapshotPath);
+      // Check if this is the first migration
+      const snapshotExists = await this.files.exists("snapshot.sql");
       
-      const migrations: ZynxMigration[] = [];
-      
-      if (!snapshotExists) {
-        // First time: Create snapshot migration
-        console.log("🌊 Creating initial snapshot migration...");
-        const snapshotMigration = await this.generateSnapshotMigration(currentSchema);
-        migrations.push(snapshotMigration);
-      } else {
-        // Compare with existing snapshot
-        const snapshotDbml = await this.files.readFile(snapshotPath);
-        const snapshotSchema = await this.parser.parse(snapshotDbml);
-        
-        console.log("🧬 Comparing schema changes...");
-        const incrementalMigration = await this.generateIncrementalMigration(
-          snapshotSchema, 
-          currentSchema
-        );
-        
-        if (incrementalMigration) {
-          migrations.push(incrementalMigration);
-        }
+      if (!snapshotExists && !options.force) {
+        // Generate initial snapshot
+        return await this.generateInitialSnapshot(currentSchema, options);
       }
       
-      // Update snapshot files
-      await this.updateSnapshot(currentDbml, currentSchema);
+      // Read existing snapshot for comparison
+      const snapshotDbml = await this.files.exists("snapshot.dbml") 
+        ? await this.files.readFile("snapshot.dbml")
+        : currentDbml;
       
-      const executionTime = Date.now() - startTime;
-      const result: ZynxResult = {
-        success: true,
-        message: migrations.length > 0 
-          ? `🦎 Generated ${migrations.length} migration(s) successfully!`
-          : "ℹ️ No schema changes detected - everything is up to date!",
-        migrations,
-        executionTime
+      const snapshotSchema = await this.parser.parse(snapshotDbml);
+      
+      // Generate diff
+      console.log("🧬 Comparing schema changes...");
+      const changes = await this.differ.diff(snapshotSchema, currentSchema);
+      
+      if (changes.length === 0 && !options.force) {
+        return {
+          filename: "",
+          sql: "",
+          changes: [],
+          checksum: "",
+          executionTime: Date.now() - startTime
+        };
+      }
+      
+      // Generate migration SQL
+      const migrationSql = await this.generator.generateMigrationSQL(changes);
+      
+      if (options.dryRun) {
+        return {
+          filename: `${await this.files.getNextMigrationNumber()}.sql`,
+          sql: migrationSql,
+          changes,
+          checksum: await this.files.calculateChecksum(migrationSql),
+          executionTime: Date.now() - startTime
+        };
+      }
+      
+      // Write migration file
+      const migrationNumber = await this.files.getNextMigrationNumber();
+      const filename = `${migrationNumber.toString().padStart(4, '0')}.sql`;
+      
+      await this.files.writeFile(filename, migrationSql);
+      
+      // Update snapshots
+      await this.updateSnapshots(currentDbml, currentSchema);
+      
+      console.log(`📄 Generated migration: ${filename}`);
+      
+      return {
+        filename,
+        sql: migrationSql,
+        changes,
+        checksum: await this.files.calculateChecksum(migrationSql),
+        executionTime: Date.now() - startTime
       };
-      
-      await this.config.hooks?.afterGenerate?.(result);
-      console.log(result.message);
-      
-      return result;
       
     } catch (error) {
-      const executionTime = Date.now() - startTime;
-      const result: ZynxResult = {
-        success: false,
-        message: "🚨 Migration generation failed",
-        migrations: [],
-        executionTime,
-        errors: [{
-          code: "GENERATION_ERROR",
-          message: error.message,
-          stack: error.stack
-        }]
-      };
-      
-      console.error(result.message);
-      console.error(error.message);
-      
-      return result;
+      const err = ErrorHandler.fromUnknown(error);
+      console.error("🚨 Migration generation failed:", err.message);
+      throw error;
     }
   }
 
   /**
    * 🌊 Run pending migrations
-   * 
-   * Applies all pending migrations to the database in order,
-   * with proper transaction handling and error recovery.
    */
-  async run(): Promise<ZynxResult> {
+  async run(options: RunOptions = {}): Promise<MigrationResult> {
     const startTime = Date.now();
+    const migrationsApplied: ZynxMigrationStatus[] = [];
     
     try {
-      await this.config.hooks?.beforeRun?.();
-      
       console.log("🌊 Zynx is swimming through your migrations...");
       
       // Connect to database
@@ -171,35 +168,103 @@ export class ZynxManager {
       // Ensure migration table exists
       await this.ensureMigrationTable();
       
-      // Check if this is a fresh database
-      const currentVersion = await this.getCurrentVersion();
+      // Get current state
+      const currentMigration = await this.getCurrentMigration();
+      const migrationFiles = await this.getMigrationFiles();
       
-      if (currentVersion === 0) {
-        // Fresh database: run snapshot migration
-        return await this.runSnapshotMigration();
-      } else {
-        // Existing database: run incremental migrations
-        return await this.runIncrementalMigrations(currentVersion);
+      // Filter pending migrations
+      const pendingMigrations = migrationFiles.filter(m => 
+        m.number > (currentMigration || 0)
+      );
+      
+      if (pendingMigrations.length === 0) {
+        console.log("✨ No pending migrations found!");
+        return {
+          success: true,
+          migrationsApplied: [],
+          errors: [],
+          currentMigration: currentMigration || 0,
+          executionTime: Date.now() - startTime
+        };
       }
       
-    } catch (error) {
-      const executionTime = Date.now() - startTime;
-      const result: ZynxResult = {
-        success: false,
-        message: "🚨 Migration execution failed",
-        migrations: [],
-        executionTime,
-        errors: [{
-          code: "EXECUTION_ERROR",
-          message: error.message,
-          stack: error.stack
-        }]
+      if (options.dryRun) {
+        console.log(`🔍 Would apply ${pendingMigrations.length} migrations:`);
+        for (const migration of pendingMigrations) {
+          console.log(`  ${migration.filename}`);
+        }
+        return {
+          success: true,
+          migrationsApplied: [],
+          errors: [],
+          currentMigration: currentMigration || 0,
+          executionTime: Date.now() - startTime
+        };
+      }
+      
+      // Apply migrations
+      for (const migration of pendingMigrations) {
+        if (options.single && migrationsApplied.length > 0) break;
+        if (options.target && migration.number > options.target) break;
+        
+        console.log(`  🌊 Running migration ${migration.filename}...`);
+        
+        const migrationStartTime = Date.now();
+        
+        await this.db.transaction(async (tx) => {
+          // Execute migration SQL statements
+          const statements = migration.content.split(';').filter(stmt => stmt.trim());
+          for (const statement of statements) {
+            if (statement.trim()) {
+              await tx.execute(statement);
+            }
+          }
+          
+          // Record migration
+          await tx.execute(
+            `INSERT INTO ${this.config.migrations.tableName} (number, filename, checksum, applied_at) VALUES ($1, $2, $3, NOW())`,
+            [migration.number, migration.filename, migration.checksum]
+          );
+        });
+        
+        const migrationStatus: ZynxMigrationStatus = {
+          number: migration.number,
+          filename: migration.filename,
+          appliedAt: new Date(),
+          checksum: migration.checksum,
+          executionTime: Date.now() - migrationStartTime
+        };
+        
+        migrationsApplied.push(migrationStatus);
+        console.log(`  ✅ Migration ${migration.filename} completed`);
+      }
+      
+      const finalMigration = migrationsApplied.length > 0 
+        ? migrationsApplied[migrationsApplied.length - 1].number
+        : currentMigration || 0;
+      
+      console.log(`🦎 Applied ${migrationsApplied.length} migrations successfully!`);
+      
+      return {
+        success: true,
+        migrationsApplied,
+        errors: [],
+        currentMigration: finalMigration,
+        executionTime: Date.now() - startTime
       };
       
-      console.error(result.message);
-      console.error(error.message);
+    } catch (error) {
+      const err = ErrorHandler.fromUnknown(error);
+      console.error("🚨 Migration execution failed:", err.message);
       
-      return result;
+      const currentMigration = await this.getCurrentMigration();
+      return {
+        success: false,
+        migrationsApplied,
+        errors: [ErrorHandler.fromUnknown(error).message],
+        currentMigration: currentMigration || 0,
+        executionTime: Date.now() - startTime
+      };
     } finally {
       await this.db.disconnect();
     }
@@ -207,265 +272,215 @@ export class ZynxManager {
 
   /**
    * 📊 Get current migration status
-   * 
-   * Returns detailed information about applied and pending migrations.
    */
-  async status(): Promise<ZynxStatus> {
+  async getStatus(): Promise<DatabaseStatus> {
     try {
+      // Connect to database
       await this.db.connect();
       
-      const currentVersion = await this.getCurrentVersion();
-      const migrationFiles = await this.files.getMigrationFiles();
-      const latestVersion = this.getLatestMigrationVersion(migrationFiles);
+      // Check database connection
+      const healthCheck = await this.dbUtils.healthCheck();
       
-      // TODO: Implement detailed migration status
-      const status: ZynxStatus = {
-        currentVersion,
-        latestVersion,
-        pendingCount: Math.max(0, latestVersion - currentVersion),
-        migrations: [], // TODO: Build detailed migration list
-        databaseConnected: true,
-        lastMigration: await this.getLastMigrationDate()
+      // Check if migration table exists
+      const migrationTableExists = await this.dbUtils.tableExists(this.config.migrations.tableName);
+      
+      // Get current migration
+      const currentMigration = migrationTableExists ? await this.getCurrentMigration() : undefined;
+      
+      // Get applied migrations
+      const appliedMigrations = migrationTableExists ? await this.getAppliedMigrations() : [];
+      
+      // Get file system migrations
+      const fileSystemMigrations = await this.getMigrationFiles();
+      
+      // Calculate pending migrations
+      const pendingMigrations = fileSystemMigrations
+        .filter(m => !appliedMigrations.some(am => am.number === m.number))
+        .map(m => ({
+          number: m.number,
+          filename: m.filename,
+          appliedAt: new Date(), // Not actually applied yet, but needed for interface
+          checksum: m.checksum,
+          executionTime: 0,
+          name: m.filename.replace(/^\d+[-_]?/, '').replace(/\.sql$/, '')
+        }));
+      
+      return {
+        connected: healthCheck.healthy,
+        migrationsTableExists: migrationTableExists,
+        currentVersion: currentMigration || 0,
+        latestVersion: fileSystemMigrations.length > 0 ? Math.max(...fileSystemMigrations.map(m => m.number)) : 0,
+        databaseConnected: healthCheck.healthy,
+        currentMigration: currentMigration,
+        appliedMigrations: appliedMigrations,
+        pendingMigrations: pendingMigrations,
+        fileSystemMigrations: fileSystemMigrations
       };
-      
-      return status;
       
     } catch (error) {
       return {
+        connected: false,
+        migrationsTableExists: false,
         currentVersion: 0,
         latestVersion: 0,
-        pendingCount: 0,
-        migrations: [],
-        databaseConnected: false
+        databaseConnected: false,
+        currentMigration: undefined,
+        appliedMigrations: [],
+        pendingMigrations: [],
+        fileSystemMigrations: []
       };
     } finally {
       await this.db.disconnect();
     }
   }
 
+  /**
+   * ⏪ Rollback migrations (if supported)
+   */
+  async rollback(options: RollbackOptions = {}): Promise<RollbackResult> {
+    const startTime = Date.now();
+    
+    // For now, return not supported
+    console.warn("⚠️  Rollback is not yet implemented");
+    console.warn("🦎 Axolotls can regenerate limbs, but rollback needs more work!");
+    
+    return {
+      success: false,
+      rolledBackMigrations: [],
+      errors: ["Rollback not yet implemented"],
+      migrationsRolledBack: [],
+      currentMigration: undefined,
+      executionTime: Date.now() - startTime
+    };
+  }
+
   // ==========================================================================
   // PRIVATE HELPER METHODS
   // ==========================================================================
 
-  private async generateSnapshotMigration(schema: DatabaseSchema): Promise<ZynxMigration> {
-    const sql = this.generator.generateCompleteSchema(schema);
-    const snapshotPath = `${this.config.settings!.snapshotName}.sql`;
-    
-    await this.files.writeFile(snapshotPath, sql);
-    
-    return {
-      version: 0,
-      filename: snapshotPath,
-      name: "Initial schema snapshot",
-      sql,
-      checksum: await this.files.calculateChecksum(sql),
-      type: "snapshot",
-      createdAt: new Date()
-    };
+  private async readSchemaFile(): Promise<string> {
+    try {
+      return await Deno.readTextFile(this.config.schema.path);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        throw new Error(`🚨 Schema file not found: ${this.config.schema.path}`);
+      }
+      throw error;
+    }
   }
 
-  private async generateIncrementalMigration(
-    oldSchema: DatabaseSchema, 
-    newSchema: DatabaseSchema
-  ): Promise<ZynxMigration | null> {
-    const alterSql = await this.differ.generateAlterStatements(oldSchema, newSchema);
+  private async generateInitialSnapshot(schema: any, options: GenerateOptions): Promise<GenerationResult> {
+    console.log("🌊 Creating initial schema migration...");
     
-    if (!alterSql.trim()) {
-      return null; // No changes detected
+    const sql = await this.generator.generateCreateSchema(schema);
+    
+    if (options.dryRun) {
+      return {
+        filename: "0001.sql",
+        sql,
+        changes: [],
+        checksum: await this.files.calculateChecksum(sql),
+        executionTime: 0
+      };
     }
     
-    const version = await this.getNextMigrationVersion();
-    const filename = `${String(version).padStart(4, '0')}.sql`;
+    // Write the initial migration as 0001.sql
+    await this.files.writeFile("0001.sql", sql);
     
-    await this.files.writeFile(filename, alterSql);
+    // Also create snapshots for future comparisons
+    await this.files.writeFile("snapshot.sql", sql);
+    const currentDbml = await this.readSchemaFile();
+    await this.files.writeFile("snapshot.dbml", currentDbml);
+    
+    console.log("📄 Created initial migration: 0001.sql");
     
     return {
-      version,
-      filename,
-      name: `Migration ${version}`,
-      sql: alterSql,
-      checksum: await this.files.calculateChecksum(alterSql),
-      type: "incremental",
-      createdAt: new Date()
+      filename: "0001.sql",
+      sql,
+      changes: [],
+      checksum: await this.files.calculateChecksum(sql),
+      executionTime: 0
     };
   }
 
-  private async updateSnapshot(dbmlContent: string, schema: DatabaseSchema): Promise<void> {
-    const snapshotDbmlPath = `${this.config.settings!.snapshotName}.dbml`;
-    const snapshotSqlPath = `${this.config.settings!.snapshotName}.sql`;
-    
+  private async updateSnapshots(dbmlContent: string, schema: any): Promise<void> {
     // Update DBML snapshot
-    await this.files.writeFile(snapshotDbmlPath, dbmlContent);
+    await this.files.writeFile("snapshot.dbml", dbmlContent);
     
     // Update SQL snapshot
-    const completeSql = this.generator.generateCompleteSchema(schema);
-    await this.files.writeFile(snapshotSqlPath, completeSql);
+    const completeSql = await this.generator.generateCreateSchema(schema);
+    await this.files.writeFile("snapshot.sql", completeSql);
   }
 
   private async ensureMigrationTable(): Promise<void> {
-    const tableName = this.config.settings!.migrationTableName!;
+    const tableName = this.config.migrations.tableName;
+    
     const sql = `
       CREATE TABLE IF NOT EXISTS ${tableName} (
-        version INTEGER PRIMARY KEY,
-        applied_at TIMESTAMP DEFAULT NOW()
+        number INTEGER PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL,
+        checksum VARCHAR(64) NOT NULL,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
     
     await this.db.execute(sql);
   }
 
-  private async getCurrentVersion(): Promise<number> {
-    const tableName = this.config.settings!.migrationTableName!;
-    
+  private async getCurrentMigration(): Promise<number | undefined> {
     try {
       const result = await this.db.query(
-        `SELECT COALESCE(MAX(version), 0) as version FROM ${tableName}`
+        `SELECT MAX(number) as current_migration FROM ${this.config.migrations.tableName}`
       );
-      return result[0]?.version || 0;
-    } catch {
-      return 0; // Table doesn't exist
-    }
-  }
-
-  private async getNextMigrationVersion(): Promise<number> {
-    const migrationFiles = await this.files.getMigrationFiles();
-    const latestVersion = this.getLatestMigrationVersion(migrationFiles);
-    return latestVersion + 1;
-  }
-
-  private getLatestMigrationVersion(filenames: string[]): number {
-    const versions = filenames
-      .filter(f => f.match(/^\d{4}\.sql$/))
-      .map(f => parseInt(f.substring(0, 4), 10))
-      .filter(v => !isNaN(v));
-    
-    return versions.length > 0 ? Math.max(...versions) : 0;
-  }
-
-  private async runSnapshotMigration(): Promise<ZynxResult> {
-    const startTime = Date.now();
-    
-    console.log("🆕 Fresh database detected, running snapshot migration...");
-    
-    const snapshotPath = `${this.config.settings!.snapshotName}.sql`;
-    const sql = await this.files.readFile(snapshotPath);
-    
-    await this.db.transaction(async (tx) => {
-      // Run complete schema
-      await tx.execute(sql);
       
-      // Set version to latest migration number
-      const latestVersion = await this.getNextMigrationVersion() - 1;
-      const tableName = this.config.settings!.migrationTableName!;
-      
-      await tx.execute(
-        `INSERT INTO ${tableName} (version) VALUES ($1)`,
-        [latestVersion]
-      );
-    });
-    
-    const executionTime = Date.now() - startTime;
-    const result: ZynxResult = {
-      success: true,
-      message: `✨ Database initialized successfully!`,
-      migrations: [],
-      executionTime
-    };
-    
-    await this.config.hooks?.afterRun?.(result);
-    console.log(result.message);
-    
-    return result;
-  }
-
-  private async runIncrementalMigrations(currentVersion: number): Promise<ZynxResult> {
-    const startTime = Date.now();
-    const migrationFiles = await this.files.getMigrationFiles();
-    const appliedMigrations: ZynxMigration[] = [];
-    
-    // Filter and sort pending migrations
-    const pendingMigrations = migrationFiles
-      .filter(f => f.match(/^\d{4}\.sql$/))
-      .map(f => ({
-        version: parseInt(f.substring(0, 4), 10),
-        filename: f
-      }))
-      .filter(m => m.version > currentVersion)
-      .sort((a, b) => a.version - b.version);
-    
-    if (pendingMigrations.length === 0) {
-      return {
-        success: true,
-        message: "✨ Database is already up to date!",
-        migrations: [],
-        executionTime: Date.now() - startTime
-      };
-    }
-    
-    console.log(`🔄 Applying ${pendingMigrations.length} pending migration(s)...`);
-    
-    for (const migration of pendingMigrations) {
-      const migrationStartTime = Date.now();
-      
-      console.log(`  🌊 Running migration ${migration.filename}...`);
-      
-      const sql = await this.files.readFile(migration.filename);
-      const migrationObj: ZynxMigration = {
-        version: migration.version,
-        filename: migration.filename,
-        name: `Migration ${migration.version}`,
-        sql,
-        checksum: await this.files.calculateChecksum(sql),
-        type: "incremental",
-        createdAt: new Date(),
-        appliedAt: new Date(),
-        executionTime: 0
-      };
-      
-      await this.config.hooks?.beforeMigration?.(migrationObj);
-      
-      await this.db.transaction(async (tx) => {
-        await tx.execute(sql);
-        
-        const tableName = this.config.settings!.migrationTableName!;
-        await tx.execute(
-          `INSERT INTO ${tableName} (version) VALUES ($1)`,
-          [migration.version]
-        );
-      });
-      
-      migrationObj.executionTime = Date.now() - migrationStartTime;
-      appliedMigrations.push(migrationObj);
-      
-      await this.config.hooks?.afterMigration?.(migrationObj);
-      
-      console.log(`  ✅ Migration ${migration.filename} completed`);
-    }
-    
-    const executionTime = Date.now() - startTime;
-    const result: ZynxResult = {
-      success: true,
-      message: `✨ Applied ${appliedMigrations.length} migration(s) successfully!`,
-      migrations: appliedMigrations,
-      executionTime
-    };
-    
-    await this.config.hooks?.afterRun?.(result);
-    console.log(result.message);
-    
-    return result;
-  }
-
-  private async getLastMigrationDate(): Promise<Date | undefined> {
-    const tableName = this.config.settings!.migrationTableName!;
-    
-    try {
-      const result = await this.db.query(
-        `SELECT applied_at FROM ${tableName} ORDER BY version DESC LIMIT 1`
-      );
-      return result[0]?.applied_at;
-    } catch {
+      const currentMigration = (result[0] as any)?.[0];
+      return currentMigration || undefined;
+    } catch (error) {
       return undefined;
     }
+  }
+
+  private async getAppliedMigrations(): Promise<ZynxMigrationStatus[]> {
+    try {
+      const result = await this.db.query(
+        `SELECT number, filename, checksum, applied_at FROM ${this.config.migrations.tableName} ORDER BY number`
+      );
+      
+      return result.map((row: any) => ({
+        number: row[0],
+        filename: row[1],
+        checksum: row[2],
+        appliedAt: new Date(row[3]),
+        executionTime: 0
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  private async getMigrationFiles(): Promise<MigrationFile[]> {
+    const files = await this.files.getMigrationFiles();
+    const result: MigrationFile[] = [];
+    
+    for (const filename of files) {
+      if (filename.match(/^\d{4}\.sql$/)) {
+        const number = parseInt(filename.substring(0, 4), 10);
+        const content = await this.files.readFile(filename);
+        const checksum = await this.files.calculateChecksum(content);
+        const metadata = await this.files.getFileMetadata(filename);
+        
+        result.push({
+          number,
+          filename,
+          content,
+          checksum,
+          // size: metadata.size, // Not part of MigrationFile interface
+          createdAt: metadata.created,
+          // modified: metadata.modified // Not part of MigrationFile interface
+        });
+      }
+    }
+    
+    return result.sort((a, b) => a.number - b.number);
   }
 }

@@ -1,21 +1,45 @@
 {
-  "name": "@zynx/migrations",
+  "name": "@atikayda/zynx",
   "version": "1.0.0",
-  "description": "🦎 The Axolotl-Powered DBML Migration System for Deno",
+  "description": "🦎 The Axolotl-Powered DBML Migration System for Deno - Generate and manage PostgreSQL migrations from DBML schemas with intelligent diffing, transaction safety, multi-format configuration (YAML, JSON with kjson, TypeScript), and comprehensive CLI tools",
   "license": "MIT",
+  "author": "Atikayda",
+  "homepage": "https://github.com/atikayda/zynx#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zynx-org/zynx.git"
+    "url": "https://github.com/atikayda/zynx.git"
   },
+  "bugs": {
+    "url": "https://github.com/atikayda/zynx/issues"
+  },
+  "keywords": [
+    "database",
+    "migrations",
+    "postgresql",
+    "dbml",
+    "schema",
+    "sql",
+    "cli",
+    "deno",
+    "typescript",
+    "axolotl"
+  ],
   "exports": {
     ".": "./mod.ts",
-    "./cli": "./cli.ts"
+    "./cli": "./cli.ts",
+    "./config": "./src/utils/config.ts",
+    "./types": "./src/types.ts",
+    "./errors": "./src/utils/errors.ts",
+    "./manager": "./src/core/zynx-manager.ts"
   },
   "imports": {
     "@std/cli": "jsr:@std/cli@^1.0.0",
     "@std/fs": "jsr:@std/fs@^1.0.0",
     "@std/path": "jsr:@std/path@^1.0.0",
-    "@dbml/core": "npm:@dbml/core@3.5.1"
+    "@std/yaml": "jsr:@std/yaml@^1.0.0",
+    "@atikayda/kjson": "jsr:@atikayda/kjson@^1.0.0",
+    "@dbml/core": "npm:@dbml/core@3.5.1",
+    "pg": "npm:pg@^8.11.0"
   },
   "tasks": {
     "dev": "deno run --allow-all --watch ./examples/basic/migrate.ts",

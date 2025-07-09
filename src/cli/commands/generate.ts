@@ -8,6 +8,7 @@ import { parseArgs } from "@std/cli/parse-args";
 import type { Command } from "../cli.ts";
 import type { CLIOptions } from "../../types.ts";
 import { ZynxManager } from "../../core/zynx-manager.ts";
+import { ErrorHandler } from "../../utils/errors.ts";
 import { loadConfig } from "../../utils/config.ts";
 
 export class GenerateCommand implements Command {
@@ -62,7 +63,8 @@ export class GenerateCommand implements Command {
         }
       }
     } catch (error) {
-      if (error.message.includes("No changes detected")) {
+      const err = ErrorHandler.fromUnknown(error);
+      if (err.message.includes("No changes detected")) {
         console.log("✨ No schema changes detected - database is up to date!");
         console.log("🦎 Your axolotl is happy with the current state");
       } else {

@@ -6,6 +6,7 @@
  */
 
 import { Parser } from "@dbml/core";
+import { ErrorHandler } from "../utils/errors.ts";
 import type {
   DatabaseSchema,
   DBMLTable,
@@ -39,24 +40,25 @@ export class DBMLParser {
    */
   async parse(dbmlContent: string): Promise<DatabaseSchema> {
     try {
-      // Parse DBML using @dbml/core
-      const database = this.parser.parse(dbmlContent);
+      // Parse DBML using @dbml/core with explicit format
+      const database = this.parser.parse(dbmlContent, 'dbml');
       
       // Convert to Zynx schema format
       const schema: DatabaseSchema = {
-        name: database.project?.name || "database",
+        name: database.name || "database",
         tables: this.extractTables(database),
         indexes: this.extractIndexes(database),
         refs: this.extractRefs(database),
         metadata: {
-          databaseType: database.project?.database_type || "postgresql",
-          note: database.project?.note
+          databaseType: database.databaseType || "postgresql",
+          note: database.note
         }
       };
 
       return schema;
     } catch (error) {
-      throw new Error(`🚨 DBML parsing failed: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 DBML parsing failed: ${err.message}`);
     }
   }
 
@@ -68,7 +70,7 @@ export class DBMLParser {
    */
   async validate(dbmlContent: string): Promise<boolean> {
     try {
-      this.parser.parse(dbmlContent);
+      this.parser.parse(dbmlContent, 'dbml');
       return true;
     } catch {
       return false;
@@ -206,15 +208,28 @@ export class DBMLParser {
     for (const schema of database.schemas) {
       if (schema.refs) {
         for (const ref of schema.refs) {
+          // Skip refs with missing endpoints or field names
+          if (!ref.endpoints || ref.endpoints.length < 2) {
+            continue;
+          }
+          
+          const endpoint0 = ref.endpoints[0];
+          const endpoint1 = ref.endpoints[1];
+          
+          // Skip if fieldName is undefined (parser issue)
+          if (!endpoint0.fieldName || !endpoint1.fieldName) {
+            continue;
+          }
+          
           const zynxRef: DBMLRef = {
             name: ref.name,
             from: {
-              table: ref.endpoints[0].tableName,
-              column: ref.endpoints[0].fieldName
+              table: endpoint0.tableName,
+              column: endpoint0.fieldName
             },
             to: {
-              table: ref.endpoints[1].tableName,
-              column: ref.endpoints[1].fieldName
+              table: endpoint1.tableName,
+              column: endpoint1.fieldName
             },
             type: this.normalizeRefType(ref.relation),
             onDelete: ref.onDelete,
@@ -241,7 +256,7 @@ export class DBMLParser {
     let baseType = type.type_name || type.value || "text";
     
     // Handle type parameters (e.g., varchar(255))
-    if (type.args && type.args.length > 0) {
+    if (type.args && Array.isArray(type.args) && type.args.length > 0) {
       const args = type.args.map((arg: any) => arg.value || arg).join(", ");
       baseType = `${baseType}(${args})`;
     }

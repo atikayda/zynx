@@ -40,6 +40,13 @@ export interface SchemaChange {
 export class SchemaDiffer {
   
   /**
+   * Compare two schemas and return a list of changes (alias for compare)
+   */
+  async diff(oldSchema: any, newSchema: any): Promise<any[]> {
+    return this.compare(oldSchema, newSchema);
+  }
+  
+  /**
    * Compare two schemas and return a list of changes
    * 
    * @param oldSchema - Original schema

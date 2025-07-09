@@ -6,6 +6,7 @@
  */
 
 import type { DatabaseConfig } from "../types.ts";
+import { ErrorHandler } from "./errors.ts";
 
 /**
  * Database connection interface for different database types
@@ -49,7 +50,7 @@ export class PostgreSQLConnection implements DatabaseConnection {
 
     try {
       // Import PostgreSQL client dynamically
-      const { Client } = await import("https://deno.land/x/postgres@v0.17.0/mod.ts");
+      const { Client } = await import("pg");
       
       this.client = new Client(this.config.connectionString);
       await this.client.connect();
@@ -57,7 +58,8 @@ export class PostgreSQLConnection implements DatabaseConnection {
       
       console.log("🌊 Connected to PostgreSQL database");
     } catch (error) {
-      throw new Error(`🚨 Failed to connect to PostgreSQL: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to connect to PostgreSQL: ${err.message}`);
     }
   }
 
@@ -75,7 +77,8 @@ export class PostgreSQLConnection implements DatabaseConnection {
       this.client = null;
       console.log("🦎 Disconnected from PostgreSQL database");
     } catch (error) {
-      console.warn(`⚠️ Error disconnecting from PostgreSQL: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      console.warn(`⚠️ Error disconnecting from PostgreSQL: ${err.message}`);
     }
   }
 
@@ -91,7 +94,8 @@ export class PostgreSQLConnection implements DatabaseConnection {
       const result = await this.client.queryArray(sql, params);
       return result.rows;
     } catch (error) {
-      throw new Error(`🚨 Query execution failed: ${error.message}\nSQL: ${sql}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Query execution failed: ${err.message}\nSQL: ${sql}`);
     }
   }
 
@@ -106,7 +110,8 @@ export class PostgreSQLConnection implements DatabaseConnection {
     try {
       await this.client.queryArray(sql, params);
     } catch (error) {
-      throw new Error(`🚨 Statement execution failed: ${error.message}\nSQL: ${sql}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Statement execution failed: ${err.message}\nSQL: ${sql}`);
     }
   }
 
@@ -139,7 +144,8 @@ export class PostgreSQLConnection implements DatabaseConnection {
       return result;
     } catch (error) {
       await transaction.rollback();
-      throw new Error(`🚨 Transaction failed: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Transaction failed: ${err.message}`);
     }
   }
 
@@ -191,9 +197,10 @@ export class DatabaseUtils {
         [tableName]
       );
       
-      return result[0] && (result[0] as any[])[0] === true;
+      return !!(result[0] && (result[0] as any[])[0] === true);
     } catch (error) {
-      throw new Error(`🚨 Failed to check table existence: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to check table existence: ${err.message}`);
     }
   }
 
@@ -212,9 +219,10 @@ export class DatabaseUtils {
         [tableName, columnName]
       );
       
-      return result[0] && (result[0] as any[])[0] === true;
+      return !!(result[0] && (result[0] as any[])[0] === true);
     } catch (error) {
-      throw new Error(`🚨 Failed to check column existence: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to check column existence: ${err.message}`);
     }
   }
 
@@ -231,9 +239,10 @@ export class DatabaseUtils {
         [indexName]
       );
       
-      return result[0] && (result[0] as any[])[0] === true;
+      return !!(result[0] && (result[0] as any[])[0] === true);
     } catch (error) {
-      throw new Error(`🚨 Failed to check index existence: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to check index existence: ${err.message}`);
     }
   }
 
@@ -252,9 +261,10 @@ export class DatabaseUtils {
         [tableName, constraintName]
       );
       
-      return result[0] && (result[0] as any[])[0] === true;
+      return !!(result[0] && (result[0] as any[])[0] === true);
     } catch (error) {
-      throw new Error(`🚨 Failed to check constraint existence: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to check constraint existence: ${err.message}`);
     }
   }
 
@@ -272,7 +282,8 @@ export class DatabaseUtils {
       
       return result.map(row => (row as any[])[0] as string);
     } catch (error) {
-      throw new Error(`🚨 Failed to get table names: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to get table names: ${err.message}`);
     }
   }
 
@@ -294,7 +305,8 @@ export class DatabaseUtils {
         encoding: (encodingResult[0] as any[])[0] as string
       };
     } catch (error) {
-      throw new Error(`🚨 Failed to get database info: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to get database info: ${err.message}`);
     }
   }
 
@@ -306,7 +318,8 @@ export class DatabaseUtils {
       await this.connection.query("SELECT 1");
       return { healthy: true, message: "Database connection healthy" };
     } catch (error) {
-      return { healthy: false, message: `Database health check failed: ${error.message}` };
+      const err = ErrorHandler.fromUnknown(error);
+      return { healthy: false, message: `Database health check failed: ${err.message}` };
     }
   }
 
@@ -337,10 +350,10 @@ export class DatabaseUtils {
       // Get column information
       const columnResult = await this.connection.query(`
         SELECT 
-          column_name,
-          data_type,
-          is_nullable,
-          column_default,
+          c.column_name,
+          c.data_type,
+          c.is_nullable,
+          c.column_default,
           CASE WHEN pk.constraint_name IS NOT NULL THEN true ELSE false END as is_primary
         FROM information_schema.columns c
         LEFT JOIN (
@@ -406,7 +419,8 @@ export class DatabaseUtils {
         })
       };
     } catch (error) {
-      throw new Error(`🚨 Failed to get table schema: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to get table schema: ${err.message}`);
     }
   }
 
@@ -524,7 +538,8 @@ export class ConnectionPool {
       try {
         await connection.disconnect();
       } catch (error) {
-        console.warn(`⚠️ Error closing connection '${name}': ${error.message}`);
+        const err = ErrorHandler.fromUnknown(error);
+        console.warn(`⚠️ Error closing connection '${name}': ${err.message}`);
       }
     }
     

@@ -10,6 +10,7 @@ import { StatusCommand } from "./commands/status.ts";
 import { InitCommand } from "./commands/init.ts";
 import { RollbackCommand } from "./commands/rollback.ts";
 import type { CLIOptions } from "../types.ts";
+import { ErrorHandler } from "../utils/errors.ts";
 
 export class CLI {
   private options: CLIOptions;
@@ -60,16 +61,16 @@ export class CLI {
     try {
       await command.execute(args);
     } catch (error) {
-      console.error(`🚨 Command failed: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      console.error(ErrorHandler.formatError(err, this.options.verbose));
       
-      if (this.options.verbose) {
-        console.error(`\n📊 Stack trace:`);
-        console.error(error.stack);
-      }
+      // Show user-friendly suggestion
+      const userMessage = ErrorHandler.getUserMessage(err);
+      console.error(`\n💡 ${userMessage}`);
       
       // Show command-specific help if available
       if (command.getHelp) {
-        console.error(`\n💡 Command help:`);
+        console.error(`\n📖 Command help:`);
         console.error(command.getHelp());
       }
       

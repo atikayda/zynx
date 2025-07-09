@@ -1,130 +1,550 @@
-# <img src="./assets/zynx-icon.webp" alt="Zynx" width="128" height="128">
+# 🦎 Zynx
 
-> The Axolotl-Powered DBML Migration System for Deno
+> **The Axolotl-Powered DBML Migration System for Deno**
 
-![Zynx Mascot](./assets/zynx-mascot.webp)
+[![JSR](https://jsr.io/badges/@atikayda/zynx)](https://jsr.io/@atikayda/zynx)
+[![CI](https://github.com/atikayda/zynx/workflows/CI/badge.svg)](https://github.com/atikayda/zynx/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Zynx** is a powerful, Deno-native migration system that transforms your DBML schema definitions into seamless database migrations. Just like how axolotls regenerate their limbs perfectly, Zynx regenerates your database schema with precision and grace.
+**Zynx** is a powerful, Deno-native database migration system that transforms your DBML schema definitions into seamless PostgreSQL migrations. Just like how axolotls regenerate their limbs perfectly, Zynx regenerates your database schema with precision and grace.
 
 ## ✨ Features
 
-- **🔄 Regenerative Migrations**: Automatic snapshot and incremental migration generation
-- **🌊 Smooth Evolution**: Seamless schema changes with intelligent diffing
-- **🧬 Flexible Configuration**: Adaptable to any project structure
-- **🦎 Developer Friendly**: Intuitive CLI with helpful axolotl-themed messages
-- **🎯 PostgreSQL Optimized**: Built specifically for PostgreSQL (with extensibility)
-- **🚀 Deno Native**: First-class TypeScript support with modern APIs
+- **🔄 Intelligent Schema Diffing**: Automatically detects changes between DBML schemas and generates incremental migrations
+- **🌊 Transaction Safety**: All migrations run in atomic transactions with automatic rollback on failure
+- **🧬 Multi-Format Configuration**: Support for YAML, JSON (with [`@atikayda/kjson`](https://jsr.io/@atikayda/kjson)), TypeScript, and JavaScript config files
+- **🦎 Developer-Friendly CLI**: Intuitive commands with helpful error messages and comprehensive help
+- **🎯 PostgreSQL Optimized**: Built specifically for PostgreSQL with production-ready features
+- **🚀 Deno Native**: First-class TypeScript support with modern ESM imports
+- **📊 Migration Tracking**: Comprehensive migration status and history tracking
+- **🔒 Production Ready**: Extensive error handling, validation, and recovery mechanisms
 
 ## 🏊‍♀️ Quick Start
 
 ### Installation
 
 ```bash
-# Use directly from Deno registry
-deno run --allow-all https://deno.land/x/zynx@v1.0.0/cli.ts --help
+# Install globally
+deno install --allow-all -n zynx jsr:@atikayda/zynx/cli
 
-# Or add to your project
-echo '{"imports": {"zynx": "https://deno.land/x/zynx@v1.0.0/mod.ts"}}' > deno.json
+# Or use directly
+deno run --allow-all jsr:@atikayda/zynx/cli --help
 ```
 
-### Basic Usage
-
-```typescript
-import { ZynxManager, createConfig } from "zynx";
-
-const zynx = new ZynxManager(createConfig({
-  dbmlPath: "./database.dbml",
-  migrationsDir: "./migrations",
-  database: {
-    type: "postgresql",
-    connectionString: "postgresql://localhost:5432/myapp"
-  }
-}));
-
-// Generate migrations from DBML
-await zynx.generate();
-
-// Apply migrations to database
-await zynx.run();
-
-// Check migration status
-const status = await zynx.status();
-console.table(status.migrations);
-```
-
-### CLI Commands
+### Initialize a New Project
 
 ```bash
-# Generate migrations from DBML changes
-zynx generate
-
-# Apply pending migrations
-zynx run
-
-# Show migration status
-zynx status
-
-# Initialize new project with Zynx
+# Create a new Zynx project
 zynx init
+
+# This creates:
+# - zynx.config.yaml    # Configuration file
+# - database.dbml       # Schema definition
+# - migrations/         # Migration directory
 ```
 
-## 🧬 How It Works
+### Basic Workflow
 
-Zynx follows the regenerative philosophy of its axolotl mascot:
+1. **Define your schema** in `database.dbml`:
+```dbml
+Table users {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  email varchar(255) [unique, not null]
+  name varchar(100) [not null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
 
-1. **🔍 Schema Analysis**: Compares your current `database.dbml` with the last snapshot
-2. **🧬 Change Detection**: Intelligently detects additions, modifications, and deletions
-3. **🌊 Migration Generation**: Creates clean SQL migrations for incremental changes
-4. **🦎 Regeneration**: Updates the complete snapshot for fresh database creation
-5. **✨ Healing**: Applies migrations safely with transaction-based execution
+Table posts {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  title varchar(255) [not null]
+  content text
+  author_id uuid [ref: > users.id]
+  published boolean [default: false]
+  created_at timestamp [default: `now()`]
+}
+```
+
+2. **Generate migrations**:
+```bash
+zynx generate
+# Creates: migrations/0001_initial_schema.sql
+```
+
+3. **Apply migrations**:
+```bash
+zynx run
+# Applies all pending migrations to your database
+```
+
+4. **Check status**:
+```bash
+zynx status
+# Shows applied and pending migrations
+```
 
 ## 🎯 Configuration
 
-Create a `zynx.config.ts` file in your project root:
+Zynx automatically discovers configuration files in this order:
+1. `zynx.config.yaml` (recommended)
+2. `zynx.config.yml`
+3. `zynx.config.json`
+4. `zynx.config.ts`
+5. `zynx.config.js`
+
+### YAML Configuration (Recommended)
+
+```yaml
+# zynx.config.yaml
+database:
+  type: postgresql
+  connectionString: "postgresql://postgres:password@localhost:5432/myapp"
+  ssl: false
+
+migrations:
+  directory: "./migrations"
+  tableName: "zynx_migrations"
+  lockTimeout: 30000
+  queryTimeout: 60000
+
+schema:
+  path: "./database.dbml"
+  format: "dbml"
+  encoding: "utf8"
+
+generator:
+  addDropStatements: true
+  addIfNotExists: true
+  addComments: true
+  indent: "  "
+  lineEnding: "\n"
+```
+
+### TypeScript Configuration
 
 ```typescript
-import { ZynxConfig } from "zynx";
+// zynx.config.ts
+import type { ZynxConfig } from "@atikayda/zynx/types";
 
 export default {
-  dbmlPath: "./database.dbml",
-  migrationsDir: "./migrations",
   database: {
     type: "postgresql",
     connectionString: Deno.env.get("DATABASE_URL")!,
-    ssl: true
+    ssl: Deno.env.get("NODE_ENV") === "production",
+    pool: {
+      min: 2,
+      max: 10,
+      timeout: 30000
+    }
   },
-  settings: {
-    migrationTableName: "_migrations",
-    snapshotName: "snapshot",
-    migrationPrefix: "app_",
-    transactionMode: "single"
+  migrations: {
+    directory: "./migrations",
+    tableName: "zynx_migrations"
   },
-  hooks: {
-    beforeGenerate: async () => console.log("🦎 Zynx is analyzing your schema..."),
-    afterRun: async (result) => console.log(`✨ Applied ${result.count} migrations!`)
+  schema: {
+    path: "./database.dbml"
   }
 } satisfies ZynxConfig;
 ```
 
-## 📖 Documentation
+### JSON Configuration
 
-- [Getting Started Guide](./docs/getting-started.md)
-- [Configuration Reference](./docs/configuration.md)
-- [Migration Best Practices](./docs/best-practices.md)
-- [API Documentation](./docs/api.md)
-- [Troubleshooting](./docs/troubleshooting.md)
+Zynx uses [`@atikayda/kjson`](https://jsr.io/@atikayda/kjson) for enhanced JSON parsing with better error messages and BigInt support:
 
-## 🌟 Examples
+```json
+{
+  "database": {
+    "type": "postgresql",
+    "connectionString": "postgresql://localhost:5432/myapp",
+    "pool": {
+      "min": 2,
+      "max": 10,
+      "timeout": 30000
+    }
+  },
+  "migrations": {
+    "directory": "./migrations",
+    "tableName": "zynx_migrations",
+    "lockTimeout": 30000,
+    "queryTimeout": 60000
+  },
+  "schema": {
+    "path": "./database.dbml"
+  },
+  "generator": {
+    "addDropStatements": true,
+    "addIfNotExists": true,
+    "addComments": true
+  }
+}
+```
 
-Check out the [examples directory](./examples) for:
+## 🖥️ CLI Commands
 
-- [Basic Usage](./examples/basic) - Simple single-table project
-- [Advanced Setup](./examples/advanced) - Complex multi-table schema with relationships
-- [Existing Project](./examples/migration) - Migrating from other migration systems
+### Core Commands
+
+```bash
+# Generate migration from schema changes
+zynx generate [options]
+
+# Apply pending migrations
+zynx run [options]
+
+# Show migration status
+zynx status [options]
+
+# Initialize new project
+zynx init
+
+# Show help
+zynx --help
+```
+
+### Command Options
+
+#### `zynx generate`
+```bash
+zynx generate                           # Generate from default schema
+zynx generate --name "add-user-table"   # Custom migration name
+zynx generate --dry-run                 # Preview changes without creating files
+zynx generate --schema "./custom.dbml"  # Use custom schema file
+zynx generate --force                   # Force generation even if no changes
+```
+
+#### `zynx run`
+```bash
+zynx run                     # Apply all pending migrations
+zynx run --dry-run          # Preview migrations without applying
+zynx run --target 5         # Apply migrations up to specific number
+zynx run --single           # Apply only the next pending migration
+zynx run --force            # Force apply (use with caution)
+```
+
+#### `zynx status`
+```bash
+zynx status              # Basic status overview
+zynx status --verbose    # Detailed status with migration lists
+zynx status --json       # JSON output for scripting
+```
+
+### Global Options
+
+```bash
+-c, --config <file>    Use custom config file
+-v, --verbose          Enable verbose output
+-h, --help             Show help message
+-V, --version          Show version information
+```
+
+## 📚 Programmatic Usage
+
+### Basic Library Usage
+
+```typescript
+import { ZynxManager, loadConfig } from "@atikayda/zynx";
+
+// Load configuration
+const config = await loadConfig("./zynx.config.yaml");
+
+// Create manager instance
+const zynx = new ZynxManager(config);
+
+// Generate migrations
+const generateResult = await zynx.generate();
+console.log(`Generated: ${generateResult.migrationFile}`);
+
+// Apply migrations
+const runResult = await zynx.run();
+console.log(`Applied ${runResult.appliedMigrations.length} migrations`);
+
+// Check status
+const status = await zynx.status();
+console.log(`Pending: ${status.pendingMigrations.length}`);
+```
+
+### Advanced Usage with Error Handling
+
+```typescript
+import { 
+  ZynxManager, 
+  loadConfig, 
+  ZynxError,
+  DatabaseError,
+  SchemaError 
+} from "@atikayda/zynx";
+
+try {
+  const config = await loadConfig();
+  const zynx = new ZynxManager(config);
+  
+  // Generate with custom options
+  const result = await zynx.generate({
+    name: "add_user_profiles",
+    force: false
+  });
+  
+  if (result.hasChanges) {
+    console.log(`Generated migration: ${result.migrationFile}`);
+    
+    // Apply with dry run first
+    const dryRun = await zynx.run({ dryRun: true });
+    console.log("Dry run successful, applying migrations...");
+    
+    const applied = await zynx.run();
+    console.log(`Successfully applied ${applied.appliedMigrations.length} migrations`);
+  } else {
+    console.log("No schema changes detected");
+  }
+  
+} catch (error) {
+  if (error instanceof SchemaError) {
+    console.error(`Schema error: ${error.message}`);
+    if (error.lineNumber) {
+      console.error(`At line ${error.lineNumber} in ${error.schemaPath}`);
+    }
+  } else if (error instanceof DatabaseError) {
+    console.error(`Database error: ${error.message}`);
+    if (error.query) {
+      console.error(`Query: ${error.query}`);
+    }
+  } else if (error instanceof ZynxError) {
+    console.error(`Zynx error: ${error.message}`);
+  } else {
+    console.error(`Unexpected error: ${error.message}`);
+  }
+  
+  Deno.exit(1);
+}
+```
+
+### Configuration Management
+
+```typescript
+import { 
+  loadConfig, 
+  createConfig, 
+  discoverConfigFile,
+  isValidConfig 
+} from "@atikayda/zynx/config";
+
+// Discover config file automatically
+const configPath = await discoverConfigFile();
+console.log(`Found config: ${configPath}`);
+
+// Load from specific path
+const config = await loadConfig("./custom-config.yaml");
+
+// Create config programmatically
+const config = createConfig({
+  database: {
+    type: "postgresql",
+    connectionString: "postgresql://localhost:5432/myapp"
+  },
+  migrations: {
+    directory: "./db/migrations"
+  },
+  schema: {
+    path: "./schema/database.dbml"
+  }
+});
+
+// Validate configuration
+if (isValidConfig(config)) {
+  console.log("Configuration is valid");
+}
+```
+
+## 🔧 Migration Files
+
+Generated migration files follow a consistent structure:
+
+```sql
+-- Migration: 0001_add_user_table
+-- Generated: 2024-01-15T10:30:00Z
+-- Zynx Version: 1.0.0
+
+BEGIN;
+
+-- Create users table
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now()
+);
+
+-- Create indexes
+CREATE INDEX idx_users_email ON users(email);
+
+-- Insert migration record
+INSERT INTO zynx_migrations (number, name, checksum, executed_at) 
+VALUES (1, 'add_user_table', 'sha256:abc123...', now());
+
+COMMIT;
+```
+
+## 🛠️ Development & CI/CD
+
+### GitHub Actions
+
+```yaml
+name: Database Migrations
+on: [push, pull_request]
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+      
+      - name: Run migrations (dry run)
+        run: deno run --allow-all jsr:@atikayda/zynx/cli run --dry-run
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+      
+      - name: Apply migrations
+        run: deno run --allow-all jsr:@atikayda/zynx/cli run
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+```
+
+### Docker
+
+```dockerfile
+FROM denoland/deno:alpine
+
+WORKDIR /app
+COPY . .
+
+# Cache dependencies
+RUN deno cache jsr:@atikayda/zynx/cli
+
+# Run migrations
+ENTRYPOINT ["deno", "run", "--allow-all", "jsr:@atikayda/zynx/cli"]
+CMD ["run"]
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    
+  migrate:
+    image: denoland/deno:alpine
+    depends_on:
+      - postgres
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/myapp
+    command: >
+      sh -c "
+        deno run --allow-all jsr:@atikayda/zynx/cli run
+      "
+```
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**Migration fails with connection error:**
+```bash
+# Check your database connection
+zynx status --verbose
+
+# Test with different connection string
+zynx status --config ./test-config.yaml
+```
+
+**Schema parsing errors:**
+```bash
+# Validate your DBML syntax
+zynx generate --dry-run --verbose
+
+# Check specific schema file
+zynx generate --schema ./problematic-schema.dbml --dry-run
+```
+
+**Migration conflicts:**
+```bash
+# Show detailed migration status
+zynx status --verbose
+
+# Force regenerate (careful!)
+zynx generate --force
+```
+
+### Debug Mode
+
+```bash
+# Enable verbose logging
+ZYNX_LOG_LEVEL=debug zynx run --verbose
+
+# Show configuration resolution
+zynx status --verbose
+```
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+deno test --allow-all
+
+# Run specific test suite
+deno test --allow-all tests/cli/
+deno test --allow-all tests/core/
+
+# Run with coverage
+deno test --allow-all --coverage=cov_profile
+deno coverage cov_profile
+```
 
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) for details.
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/atikayda/zynx.git
+cd zynx
+
+# Run tests
+deno test --allow-all
+
+# Run CLI locally
+deno run --allow-all ./cli.ts --help
+
+# Format code
+deno fmt
+
+# Lint code
+deno lint
+```
 
 ## 📄 License
 
@@ -136,4 +556,4 @@ The axolotl is famous for its incredible regenerative abilities - it can regrow 
 
 ---
 
-**Made with 💙 by the Zynx team**
+**Made with 💙 for the Deno ecosystem**

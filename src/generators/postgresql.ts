@@ -28,6 +28,40 @@ export class PostgreSQLGenerator extends BaseGenerator {
   dialect = "postgresql" as const;
 
   /**
+   * Generate complete schema SQL (alias for generateCompleteSchema)
+   */
+  async generateCreateSchema(schema: any): Promise<string> {
+    return this.generateCompleteSchema(schema);
+  }
+
+  /**
+   * Generate migration SQL from schema changes
+   */
+  async generateMigrationSQL(changes: any[]): Promise<string> {
+    const statements: string[] = [];
+    
+    for (const change of changes) {
+      switch (change.type) {
+        case "create_table":
+        case "create_index":
+        case "add_foreign_key":
+          statements.push(change.sql);
+          break;
+        case "alter_table":
+          statements.push(change.sql);
+          break;
+        case "drop_table":
+        case "drop_index":
+        case "drop_foreign_key":
+          statements.push(change.sql);
+          break;
+      }
+    }
+    
+    return statements.join('\n\n') + '\n';
+  }
+
+  /**
    * Generate CREATE TABLE statement for PostgreSQL
    * 
    * @param table - Table definition
@@ -256,7 +290,7 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @param schema - Database schema
    * @returns string | null - Setup SQL
    */
-  protected generateSetup(schema: DatabaseSchema): string | null {
+  protected override generateSetup(schema: DatabaseSchema): string | null {
     const setup: string[] = [];
     
     // Check if UUID extension is needed
@@ -344,7 +378,12 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @param identifier - Identifier to escape
    * @returns string - Escaped identifier
    */
-  protected escapeIdentifier(identifier: string): string {
+  protected override escapeIdentifier(identifier: string): string {
+    // Handle undefined/null identifiers
+    if (!identifier || typeof identifier !== 'string') {
+      throw new Error(`Invalid identifier: ${identifier}`);
+    }
+    
     // PostgreSQL uses double quotes for identifiers
     // Only escape if identifier contains special characters or is a reserved word
     const reservedWords = [
@@ -366,7 +405,7 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @param fieldType - Field type
    * @returns string - Formatted default value
    */
-  protected formatDefaultValue(defaultValue: string, fieldType: string): string {
+  protected override formatDefaultValue(defaultValue: string, fieldType: string): string {
     // Handle PostgreSQL-specific functions
     if (defaultValue.includes('gen_random_uuid()')) {
       return 'gen_random_uuid()';
@@ -400,7 +439,7 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @param table - Table definition
    * @returns string | null - Table comment SQL
    */
-  protected generateTableComment(table: DBMLTable): string | null {
+  protected override generateTableComment(table: DBMLTable): string | null {
     if (table.note) {
       return `COMMENT ON TABLE ${this.escapeIdentifier(table.name)} IS ${this.escapeStringLiteral(table.note)};`;
     }
@@ -414,7 +453,7 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @param field - Field definition
    * @returns string | null - Column comment SQL
    */
-  protected generateColumnComment(tableName: string, field: DBMLField): string | null {
+  protected override generateColumnComment(tableName: string, field: DBMLField): string | null {
     if (field.note) {
       return `COMMENT ON COLUMN ${this.escapeIdentifier(tableName)}.${this.escapeIdentifier(field.name)} IS ${this.escapeStringLiteral(field.note)};`;
     }
@@ -437,7 +476,7 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @param type - Data type
    * @returns boolean - Whether type is numeric
    */
-  protected isNumericType(type: string): boolean {
+  protected override isNumericType(type: string): boolean {
     const postgresNumericTypes = [
       'integer', 'int', 'int4', 'bigint', 'int8', 'smallint', 'int2',
       'decimal', 'numeric', 'real', 'float4', 'double precision', 'float8',

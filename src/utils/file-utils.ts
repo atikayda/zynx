@@ -8,6 +8,7 @@
 // Use native Web Crypto API
 import { join, dirname } from "@std/path";
 import { ensureDir } from "@std/fs";
+import { ErrorHandler } from "./errors.ts";
 
 /**
  * File management utilities for Zynx migrations
@@ -27,7 +28,8 @@ export class FileManager {
       await ensureDir(this.migrationsDir);
       console.log(`🦎 Initialized migrations directory: ${this.migrationsDir}`);
     } catch (error) {
-      throw new Error(`🚨 Failed to initialize migrations directory: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to initialize migrations directory: ${err.message}`);
     }
   }
 
@@ -43,7 +45,8 @@ export class FileManager {
       if (error instanceof Deno.errors.NotFound) {
         throw new Error(`🚨 File not found: ${filename}`);
       }
-      throw new Error(`🚨 Failed to read file '${filename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to read file '${filename}': ${err.message}`);
     }
   }
 
@@ -62,7 +65,8 @@ export class FileManager {
       
       console.log(`📝 Written file: ${filename}`);
     } catch (error) {
-      throw new Error(`🚨 Failed to write file '${filename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to write file '${filename}': ${err.message}`);
     }
   }
 
@@ -78,7 +82,8 @@ export class FileManager {
       if (error instanceof Deno.errors.NotFound) {
         return false;
       }
-      throw new Error(`🚨 Failed to check file existence '${filename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to check file existence '${filename}': ${err.message}`);
     }
   }
 
@@ -94,7 +99,8 @@ export class FileManager {
       if (error instanceof Deno.errors.NotFound) {
         return; // File doesn't exist, that's fine
       }
-      throw new Error(`🚨 Failed to delete file '${filename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to delete file '${filename}': ${err.message}`);
     }
   }
 
@@ -121,7 +127,8 @@ export class FileManager {
       if (error instanceof Deno.errors.NotFound) {
         return []; // Directory doesn't exist yet
       }
-      throw new Error(`🚨 Failed to get migration files: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to get migration files: ${err.message}`);
     }
   }
 
@@ -143,7 +150,8 @@ export class FileManager {
       if (error instanceof Deno.errors.NotFound) {
         return []; // Directory doesn't exist yet
       }
-      throw new Error(`🚨 Failed to get all files: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to get all files: ${err.message}`);
     }
   }
 
@@ -191,7 +199,8 @@ export class FileManager {
       const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       return hashHex;
     } catch (error) {
-      throw new Error(`🚨 Failed to calculate checksum: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to calculate checksum: ${err.message}`);
     }
   }
 
@@ -217,7 +226,8 @@ export class FileManager {
         checksum
       };
     } catch (error) {
-      throw new Error(`🚨 Failed to get file metadata '${filename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to get file metadata '${filename}': ${err.message}`);
     }
   }
 
@@ -235,7 +245,8 @@ export class FileManager {
       console.log(`💾 Created backup: ${backupFilename}`);
       return backupFilename;
     } catch (error) {
-      throw new Error(`🚨 Failed to create backup of '${filename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to create backup of '${filename}': ${err.message}`);
     }
   }
 
@@ -264,7 +275,8 @@ export class FileManager {
         console.log(`🧹 Cleaned up ${filesToDelete.length} old backup files`);
       }
     } catch (error) {
-      console.warn(`⚠️ Failed to cleanup backups: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      console.warn(`⚠️ Failed to cleanup backups: ${err.message}`);
     }
   }
 
@@ -326,7 +338,8 @@ export class FileManager {
         warnings
       };
     } catch (error) {
-      errors.push(`Failed to validate migration file: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      errors.push(`Failed to validate migration file: ${err.message}`);
       return { valid: false, errors, warnings };
     }
   }
@@ -370,7 +383,8 @@ export class FileManager {
             newestFile = file;
           }
         } catch (error) {
-          console.warn(`⚠️ Failed to get metadata for ${file}: ${error.message}`);
+          const err = ErrorHandler.fromUnknown(error);
+          console.warn(`⚠️ Failed to get metadata for ${file}: ${err.message}`);
         }
       }
       
@@ -384,7 +398,8 @@ export class FileManager {
         newestFile
       };
     } catch (error) {
-      throw new Error(`🚨 Failed to get directory stats: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to get directory stats: ${err.message}`);
     }
   }
 
@@ -397,7 +412,8 @@ export class FileManager {
       await this.writeFile(destFilename, content);
       console.log(`📋 Copied file: ${sourceFilename} → ${destFilename}`);
     } catch (error) {
-      throw new Error(`🚨 Failed to copy file '${sourceFilename}' to '${destFilename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to copy file '${sourceFilename}' to '${destFilename}': ${err.message}`);
     }
   }
 
@@ -410,7 +426,8 @@ export class FileManager {
       await this.deleteFile(sourceFilename);
       console.log(`🔄 Moved file: ${sourceFilename} → ${destFilename}`);
     } catch (error) {
-      throw new Error(`🚨 Failed to move file '${sourceFilename}' to '${destFilename}': ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to move file '${sourceFilename}' to '${destFilename}': ${err.message}`);
     }
   }
 
@@ -432,7 +449,8 @@ export class FileManager {
         }
       }
     } catch (error) {
-      throw new Error(`🚨 Failed to watch files: ${error.message}`);
+      const err = ErrorHandler.fromUnknown(error);
+      throw new Error(`🚨 Failed to watch files: ${err.message}`);
     }
   }
 

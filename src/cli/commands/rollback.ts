@@ -9,6 +9,7 @@ import type { Command } from "../cli.ts";
 import type { CLIOptions } from "../../types.ts";
 import { ZynxManager } from "../../core/zynx-manager.ts";
 import { loadConfig } from "../../utils/config.ts";
+import { ErrorHandler } from "../../utils/errors.ts";
 
 export class RollbackCommand implements Command {
   constructor(private options: CLIOptions) {}
@@ -45,7 +46,7 @@ export class RollbackCommand implements Command {
       
       if (targetMigration !== undefined) {
         // Validate target migration
-        const targetExists = status.appliedMigrations.some(m => m.number === targetMigration);
+        const targetExists = status.appliedMigrations.some((m: any) => m.number === targetMigration);
         if (!targetExists) {
           throw new Error(`Target migration ${targetMigration} was not found in applied migrations`);
         }
@@ -104,7 +105,7 @@ export class RollbackCommand implements Command {
         console.log(`🌊 Successfully rolled back ${result.migrationsRolledBack.length} migrations:`);
         
         for (const migration of result.migrationsRolledBack) {
-          console.log(`  ✅ ${migration.number.toString().padStart(4, '0')}.sql - ${migration.name || 'Generated migration'}`);
+          console.log(`  ✅ ${migration.version.toString().padStart(4, '0')}.sql - ${migration.name || 'Generated migration'}`);
         }
         
         console.log(`\n📊 Database is now at migration ${result.currentMigration || 'initial state'}`);
@@ -112,7 +113,8 @@ export class RollbackCommand implements Command {
       }
       
     } catch (error) {
-      if (error.message.includes("not supported")) {
+      const err = ErrorHandler.fromUnknown(error);
+      if (err.message.includes("not supported")) {
         console.error("🚨 Rollback is not supported for this database type");
         console.error("🦎 Consider using schema snapshots or manual rollback procedures");
       } else {

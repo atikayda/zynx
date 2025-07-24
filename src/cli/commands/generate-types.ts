@@ -62,7 +62,7 @@ export class GenerateTypesCommand implements Command {
       // Determine which languages to generate
       const languages = parsedArgs.all 
         ? ["typescript", "go", "python", "rust"]
-        : [parsedArgs.language];
+        : [parsedArgs.language].filter(Boolean) as string[];
 
       // Generate types for each language
       for (const language of languages) {
@@ -136,7 +136,8 @@ export class GenerateTypesCommand implements Command {
         console.log(`✅ ${language}: ${outputPath}`);
       }
     } catch (error) {
-      console.error(`❌ Failed to generate ${language} types: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Failed to generate ${language} types: ${errorMessage}`);
       if (this.options.verbose) {
         console.error(error);
       }

@@ -76,6 +76,17 @@ export { SchemaDiffer } from "./src/core/schema-differ.ts";
 export { PostgreSQLGenerator } from "./src/generators/postgresql.ts";
 export { BaseGenerator } from "./src/generators/base.ts";
 
+// Type generator exports
+export { 
+  TypeGenerator,
+  TypeScriptGenerator,
+  GoGenerator,
+  PythonGenerator,
+  RustGenerator,
+  getTypeGenerator,
+  type TypeGeneratorConfig
+} from "./src/generators/types/index.ts";
+
 // Configuration exports
 export { 
   loadConfig,

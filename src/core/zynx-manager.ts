@@ -274,6 +274,9 @@ export class ZynxManager {
    * 📊 Get current migration status
    */
   async getStatus(): Promise<DatabaseStatus> {
+    // Get file system migrations first (independent of database connection)
+    const fileSystemMigrations = await this.getMigrationFiles();
+
     try {
       // Connect to database
       await this.db.connect();
@@ -289,9 +292,6 @@ export class ZynxManager {
       
       // Get applied migrations
       const appliedMigrations = migrationTableExists ? await this.getAppliedMigrations() : [];
-      
-      // Get file system migrations
-      const fileSystemMigrations = await this.getMigrationFiles();
       
       // Calculate pending migrations
       const pendingMigrations = fileSystemMigrations
@@ -318,16 +318,26 @@ export class ZynxManager {
       };
       
     } catch (error) {
+      // Calculate pending migrations assuming no applied migrations
+      const pendingMigrations = fileSystemMigrations.map(m => ({
+        number: m.number,
+        filename: m.filename,
+        appliedAt: new Date(),
+        checksum: m.checksum,
+        executionTime: 0,
+        name: m.filename.replace(/^\d+[-_]?/, '').replace(/\.sql$/, '')
+      }));
+
       return {
         connected: false,
         migrationsTableExists: false,
         currentVersion: 0,
-        latestVersion: 0,
+        latestVersion: fileSystemMigrations.length > 0 ? Math.max(...fileSystemMigrations.map(m => m.number)) : 0,
         databaseConnected: false,
         currentMigration: undefined,
         appliedMigrations: [],
-        pendingMigrations: [],
-        fileSystemMigrations: []
+        pendingMigrations: pendingMigrations,
+        fileSystemMigrations: fileSystemMigrations
       };
     } finally {
       await this.db.disconnect();

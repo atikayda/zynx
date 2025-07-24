@@ -1,11 +1,12 @@
 /**
  * 🦎 Zynx DBML Parser - Database Schema Parsing
  * 
- * Wrapper around @dbml/core to parse DBML files and extract schema information.
+ * Uses @atikayda/dbml-pg to parse DBML files and extract schema information.
  * Converts DBML AST into Zynx-compatible schema objects.
  */
 
-import { Parser } from "@dbml/core";
+import { Parser } from "@atikayda/dbml-pg";
+import type { Schema, Table, Column, Index, Ref } from "@atikayda/dbml-pg";
 import { ErrorHandler } from "../utils/errors.ts";
 import type {
   DatabaseSchema,
@@ -40,23 +41,24 @@ export class DBMLParser {
    */
   async parse(dbmlContent: string): Promise<DatabaseSchema> {
     try {
-      // Parse DBML using @dbml/core with explicit format
-      const database = this.parser.parse(dbmlContent, 'dbml');
+      // Parse DBML using @atikayda/dbml-pg
+      const parsedSchema = this.parser.parse(dbmlContent);
       
       // Convert to Zynx schema format
       const schema: DatabaseSchema = {
-        name: database.name || "database",
-        tables: this.extractTables(database),
-        indexes: this.extractIndexes(database),
-        refs: this.extractRefs(database),
+        name: parsedSchema.name || "database",
+        tables: this.extractTables(parsedSchema),
+        indexes: this.extractIndexes(parsedSchema),
+        refs: this.extractRefs(parsedSchema),
         metadata: {
-          databaseType: database.databaseType || "postgresql",
-          note: database.note
+          databaseType: "postgresql",
+          note: parsedSchema.project?.note
         }
       };
 
       return schema;
     } catch (error) {
+      console.error("Raw parser error:", error);
       const err = ErrorHandler.fromUnknown(error);
       throw new Error(`🚨 DBML parsing failed: ${err.message}`);
     }
@@ -69,67 +71,57 @@ export class DBMLParser {
    * @returns boolean - Whether DBML is valid
    */
   async validate(dbmlContent: string): Promise<boolean> {
-    try {
-      this.parser.parse(dbmlContent, 'dbml');
-      return true;
-    } catch {
-      return false;
-    }
+    const result = this.parser.validate(dbmlContent);
+    return result.valid;
   }
 
   /**
    * Extract table information from parsed DBML
    * 
-   * @param database - Parsed database object from @dbml/core
+   * @param schema - Parsed schema object from @atikayda/dbml-pg
    * @returns DBMLTable[] - Array of table definitions
    */
-  private extractTables(database: any): DBMLTable[] {
-    if (!database.schemas || database.schemas.length === 0) {
-      return [];
-    }
+  private extractTables(schema: Schema): DBMLTable[] {
+    return schema.tables.map(table => {
+      const zynxTable: DBMLTable = {
+        name: table.name,
+        fields: this.extractFields(table.columns),
+        indexes: this.extractTableIndexes(table.indexes || [], table.name),
+        note: table.note,
+        metadata: {
+          schemaName: table.schema,
+          headerColor: table.headerColor,
+          alias: table.alias
+        }
+      };
 
-    const tables: DBMLTable[] = [];
-    
-    for (const schema of database.schemas) {
-      for (const table of schema.tables) {
-        const zynxTable: DBMLTable = {
-          name: table.name,
-          fields: this.extractFields(table.fields),
-          indexes: this.extractTableIndexes(table.indexes),
-          note: table.note,
-          metadata: {
-            schemaName: schema.name,
-            headerColor: table.headerColor,
-            alias: table.alias
-          }
-        };
-
-        tables.push(zynxTable);
-      }
-    }
-
-    return tables;
+      return zynxTable;
+    });
   }
 
   /**
    * Extract field information from a table
    * 
-   * @param fields - Fields array from @dbml/core table
+   * @param columns - Columns array from @atikayda/dbml-pg table
    * @returns DBMLField[] - Array of field definitions
    */
-  private extractFields(fields: any[]): DBMLField[] {
-    return fields.map(field => {
+  private extractFields(columns: Column[]): DBMLField[] {
+    return columns.map(column => {
       const zynxField: DBMLField = {
-        name: field.name,
-        type: this.normalizeType(field.type),
-        pk: field.pk || false,
-        unique: field.unique || false,
-        not_null: field.not_null || false,
-        default: field.default?.value,
-        note: field.note,
+        name: column.name,
+        type: column.type,
+        pk: column.pk || false,
+        unique: column.unique || false,
+        not_null: column.notNull || false,
+        default: typeof column.default === 'object' && column.default?.type === 'expression' 
+          ? String(column.default.value)
+          : column.default !== undefined ? String(column.default) : undefined,
+        note: column.note,
         metadata: {
-          increment: field.increment,
-          dbdefault: field.dbdefault
+          increment: column.increment,
+          dbdefault: typeof column.default === 'object' && column.default?.type === 'expression' 
+            ? column.default.value 
+            : undefined
         }
       };
 
@@ -140,19 +132,21 @@ export class DBMLParser {
   /**
    * Extract table-level indexes
    * 
-   * @param indexes - Indexes array from @dbml/core table
+   * @param indexes - Indexes array from @atikayda/dbml-pg table
+   * @param tableName - Name of the table these indexes belong to
    * @returns DBMLIndex[] - Array of index definitions
    */
-  private extractTableIndexes(indexes: any[]): DBMLIndex[] {
-    if (!indexes) return [];
-
+  private extractTableIndexes(indexes: Index[], tableName: string): DBMLIndex[] {
     return indexes.map(index => {
       const zynxIndex: DBMLIndex = {
         name: index.name,
-        tableName: index.tableName,
-        columns: index.columns?.map((col: any) => col.value) || [],
+        tableName: tableName,
+        columns: index.columns.map(col => 
+          typeof col === 'string' ? col : col.name
+        ),
         type: index.type,
-        unique: index.unique || false,
+        unique: index.unique || index.pk || false,
+        pk: index.pk || false,
         note: index.note
       };
 
@@ -163,29 +157,17 @@ export class DBMLParser {
   /**
    * Extract all indexes from the database
    * 
-   * @param database - Parsed database object from @dbml/core
+   * @param schema - Parsed schema object from @atikayda/dbml-pg
    * @returns DBMLIndex[] - Array of all index definitions
    */
-  private extractIndexes(database: any): DBMLIndex[] {
-    if (!database.schemas || database.schemas.length === 0) {
-      return [];
-    }
-
+  private extractIndexes(schema: Schema): DBMLIndex[] {
     const indexes: DBMLIndex[] = [];
 
-    for (const schema of database.schemas) {
-      // Table-level indexes
-      for (const table of schema.tables) {
-        if (table.indexes) {
-          const tableIndexes = this.extractTableIndexes(table.indexes);
-          indexes.push(...tableIndexes);
-        }
-      }
-
-      // Schema-level indexes
-      if (schema.indexes) {
-        const schemaIndexes = this.extractTableIndexes(schema.indexes);
-        indexes.push(...schemaIndexes);
+    // Extract indexes from all tables
+    for (const table of schema.tables) {
+      if (table.indexes) {
+        const tableIndexes = this.extractTableIndexes(table.indexes, table.name);
+        indexes.push(...tableIndexes);
       }
     }
 
@@ -195,90 +177,46 @@ export class DBMLParser {
   /**
    * Extract relationships/references from the database
    * 
-   * @param database - Parsed database object from @dbml/core
+   * @param schema - Parsed schema object from @atikayda/dbml-pg
    * @returns DBMLRef[] - Array of relationship definitions
    */
-  private extractRefs(database: any): DBMLRef[] {
-    if (!database.schemas || database.schemas.length === 0) {
-      return [];
-    }
+  private extractRefs(schema: Schema): DBMLRef[] {
+    return schema.refs.map(ref => {
+      const zynxRef: DBMLRef = {
+        name: ref.name,
+        from: {
+          table: ref.from.table,
+          column: ref.from.column || ref.from.columns?.[0] || ''
+        },
+        to: {
+          table: ref.to.table,
+          column: ref.to.column || ref.to.columns?.[0] || ''
+        },
+        type: this.normalizeRefType(ref.refType),
+        onDelete: ref.onDelete === "no action" ? undefined : ref.onDelete as "cascade" | "restrict" | "set null" | "set default" | undefined,
+        onUpdate: ref.onUpdate === "no action" ? undefined : ref.onUpdate as "cascade" | "restrict" | "set null" | "set default" | undefined
+      };
 
-    const refs: DBMLRef[] = [];
-
-    for (const schema of database.schemas) {
-      if (schema.refs) {
-        for (const ref of schema.refs) {
-          // Skip refs with missing endpoints or field names
-          if (!ref.endpoints || ref.endpoints.length < 2) {
-            continue;
-          }
-          
-          const endpoint0 = ref.endpoints[0];
-          const endpoint1 = ref.endpoints[1];
-          
-          // Skip if fieldName is undefined (parser issue)
-          if (!endpoint0.fieldName || !endpoint1.fieldName) {
-            continue;
-          }
-          
-          const zynxRef: DBMLRef = {
-            name: ref.name,
-            from: {
-              table: endpoint0.tableName,
-              column: endpoint0.fieldName
-            },
-            to: {
-              table: endpoint1.tableName,
-              column: endpoint1.fieldName
-            },
-            type: this.normalizeRefType(ref.relation),
-            onDelete: ref.onDelete,
-            onUpdate: ref.onUpdate
-          };
-
-          refs.push(zynxRef);
-        }
-      }
-    }
-
-    return refs;
+      return zynxRef;
+    });
   }
 
-  /**
-   * Normalize DBML type to consistent format
-   * 
-   * @param type - Type object from @dbml/core
-   * @returns string - Normalized type string
-   */
-  private normalizeType(type: any): string {
-    if (!type) return "text";
-
-    let baseType = type.type_name || type.value || "text";
-    
-    // Handle type parameters (e.g., varchar(255))
-    if (type.args && Array.isArray(type.args) && type.args.length > 0) {
-      const args = type.args.map((arg: any) => arg.value || arg).join(", ");
-      baseType = `${baseType}(${args})`;
-    }
-
-    return baseType.toLowerCase();
-  }
 
   /**
    * Normalize relationship type to consistent format
    * 
-   * @param relation - Relation string from @dbml/core
+   * @param refType - RefType from @atikayda/dbml-pg
    * @returns string - Normalized relationship type
    */
-  private normalizeRefType(relation: string): "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many" {
-    switch (relation) {
-      case "1-1":
+  private normalizeRefType(refType: string): "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many" {
+    switch (refType) {
+      case "-":
         return "one-to-one";
-      case "1-*":
+      case ">":
         return "one-to-many";
-      case "*-1":
+      case "<":
         return "many-to-one";
-      case "*-*":
+      case "<>":
         return "many-to-many";
       default:
         return "one-to-many"; // Default fallback

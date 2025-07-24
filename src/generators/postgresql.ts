@@ -140,11 +140,27 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @returns string - CREATE INDEX SQL
    */
   generateCreateIndex(index: DBMLIndex): string {
+    // Handle composite primary keys as constraints, not indexes
+    if (index.pk) {
+      return this.generatePrimaryKeyConstraint(index);
+    }
+    
     const indexName = index.name || `idx_${index.tableName}_${index.columns.join('_')}`;
     const unique = index.unique ? "UNIQUE " : "";
     const method = index.type ? ` USING ${index.type}` : "";
     
     return `CREATE ${unique}INDEX ${this.escapeIdentifier(indexName)} ON ${this.escapeIdentifier(index.tableName)}${method} (${index.columns.map(col => this.escapeIdentifier(col)).join(', ')});`;
+  }
+
+  /**
+   * Generate PRIMARY KEY constraint for PostgreSQL
+   * 
+   * @param index - Primary key index definition
+   * @returns string - ALTER TABLE ADD CONSTRAINT SQL
+   */
+  private generatePrimaryKeyConstraint(index: DBMLIndex): string {
+    const constraintName = index.name || `pk_${index.tableName}`;
+    return `ALTER TABLE ${this.escapeIdentifier(index.tableName)} ADD CONSTRAINT ${this.escapeIdentifier(constraintName)} PRIMARY KEY (${index.columns.map(col => this.escapeIdentifier(col)).join(', ')});`;
   }
 
   /**

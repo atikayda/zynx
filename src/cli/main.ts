@@ -25,11 +25,12 @@ USAGE:
     zynx <COMMAND> [OPTIONS]
 
 COMMANDS:
-    generate    Generate migration from DBML schema changes
-    run         Apply pending migrations to database
-    status      Show current migration status
-    init        Initialize a new Zynx project
-    rollback    Rollback migrations (if supported)
+    generate        Generate migration from DBML schema changes
+    run             Apply pending migrations to database
+    status          Show current migration status
+    init            Initialize a new Zynx project
+    rollback        Rollback migrations (if supported)
+    generate-types  Generate type definitions from DBML schema
 
 OPTIONS:
     -c, --config <file>    Use custom config file
@@ -39,11 +40,13 @@ OPTIONS:
     -V, --version          Show version information
 
 EXAMPLES:
-    zynx generate           Generate migration from schema changes
-    zynx run                Apply all pending migrations
-    zynx run --dry-run      Preview migrations without applying
-    zynx status             Show current migration status
-    zynx init               Create a new Zynx project
+    zynx generate                    Generate migration from schema changes
+    zynx run                         Apply all pending migrations
+    zynx run --dry-run               Preview migrations without applying
+    zynx status                      Show current migration status
+    zynx init                        Create a new Zynx project
+    zynx generate-types --language ts  Generate TypeScript types
+    zynx generate-types --all        Generate types for all languages
 
 For more information, visit: https://github.com/atikayda/zynx
 `);
@@ -70,7 +73,9 @@ export async function main(): Promise<void> {
         "v": "verbose",
         "d": "dry-run",
         "c": "config"
-      }
+      },
+      stopEarly: true,
+      "--": true
     });
 
     // Handle help and version flags
@@ -86,12 +91,15 @@ export async function main(): Promise<void> {
 
     // Get command
     const command = args._[0] as string;
-    const commandArgs = args._.slice(1) as string[];
-
+    
     if (!command) {
       console.error("❌ No command specified. Use --help for usage information.");
       Deno.exit(1);
     }
+    
+    // Find the command in original args and pass everything after it
+    const commandIndex = Deno.args.indexOf(command);
+    const commandArgs = commandIndex >= 0 ? Deno.args.slice(commandIndex + 1) : [];
 
     // Create configuration
     const config = await loadConfig(args.config);

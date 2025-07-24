@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@atikayda/dbml-pg@1.0.1": "1.0.1",
     "jsr:@atikayda/kjson@1": "1.0.1",
     "jsr:@std/cli@1": "1.0.20",
     "jsr:@std/fs@1": "1.0.19",
@@ -8,10 +9,17 @@
     "jsr:@std/path@1": "1.1.1",
     "jsr:@std/path@^1.1.1": "1.1.1",
     "jsr:@std/yaml@1": "1.0.8",
-    "npm:@dbml/core@3.5.1": "3.5.1_lodash@4.17.21",
-    "npm:pg@^8.11.0": "8.16.0"
+    "npm:ohm-js@17.1.0": "17.1.0",
+    "npm:pg@^8.11.0": "8.16.0",
+    "npm:proposal-decimal@20250613.0.0": "20250613.0.0"
   },
   "jsr": {
+    "@atikayda/dbml-pg@1.0.1": {
+      "integrity": "ee9c5432312226c6c98edc0b2dc11cb541f771453584b59ae2930d42760ebeb5",
+      "dependencies": [
+        "npm:ohm-js"
+      ]
+    },
     "@atikayda/kjson@1.0.1": {
       "integrity": "07eafafedcf7dc099e0b42bea4e4a752d8432cc8dfa01bce837b931d06f43335"
     },
@@ -42,30 +50,8 @@
     }
   },
   "npm": {
-    "@dbml/core@3.5.1_lodash@4.17.21": {
-      "integrity": "sha512-Aus5w1V35zgq3QtlSuqv6sEsTaAyk2XGXAXhWJSmjHaZHCvoWIueIhRwWp6xgjaYv9RUXkDOuqId2OCh91C72Q==",
-      "dependencies": [
-        "@dbml/parse",
-        "antlr4",
-        "lodash",
-        "parsimmon",
-        "pluralize"
-      ]
-    },
-    "@dbml/parse@3.13.6_lodash@4.17.21": {
-      "integrity": "sha512-13pcoynNNZlWtIBaOha5nvsav1equ97fdGhNDLqx88Zeo6+0TmsAqqksvUMhiTtAOTzQB3hz4es4gYrhu1+prA==",
-      "dependencies": [
-        "lodash"
-      ]
-    },
-    "antlr4@4.13.2": {
-      "integrity": "sha512-QiVbZhyy4xAZ17UPEuG3YTOt8ZaoeOR1CvEAqrEsDBsOqINslaB147i9xqljZqoyf5S+EUlGStaj+t22LT9MOg=="
-    },
-    "lodash@4.17.21": {
-      "integrity": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg=="
-    },
-    "parsimmon@1.18.1": {
-      "integrity": "sha512-u7p959wLfGAhJpSDJVYXoyMCXWYwHia78HhRBWqk7AIbxdmlrfdp5wX0l3xv/iTSH5HvhN9K7o26hwwpgS5Nmw=="
+    "ohm-js@17.1.0": {
+      "integrity": "sha512-xc3B5dgAjTBQGHaH7B58M2Pmv6WvzrJ/3/7LeUzXNg0/sY3jQPdSd/S2SstppaleO77rifR1tyhdfFGNIwxf2Q=="
     },
     "pg-cloudflare@1.2.5": {
       "integrity": "sha512-OOX22Vt0vOSRrdoUPKJ8Wi2OpE/o/h9T8X1s4qSkCedbNah9ei2W2765be8iMVxQUsvgT7zIAT2eIa9fs5+vtg=="
@@ -114,9 +100,6 @@
         "split2"
       ]
     },
-    "pluralize@8.0.0": {
-      "integrity": "sha512-Nc3IT5yHzflTfbjgqWcCPpo7DaKy4FnpB0l/zCAW0Tc7jxAiuqSxHasntB3D7887LSrA93kDJ9IXovxJYxyLCA=="
-    },
     "postgres-array@2.0.0": {
       "integrity": "sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA=="
     },
@@ -131,6 +114,9 @@
       "dependencies": [
         "xtend"
       ]
+    },
+    "proposal-decimal@20250613.0.0": {
+      "integrity": "sha512-cLO4I9fFHl4khF7x8F3/MUJzO/2eXvRVALzcHzNzc2pJKdNFcpk4EWW+W29V0qBQulZ6IkO58oMPU8BrsZIjag=="
     },
     "split2@4.2.0": {
       "integrity": "sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg=="
@@ -207,12 +193,12 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@atikayda/dbml-pg@1.0.1",
       "jsr:@atikayda/kjson@1",
       "jsr:@std/cli@1",
       "jsr:@std/fs@1",
       "jsr:@std/path@1",
       "jsr:@std/yaml@1",
-      "npm:@dbml/core@3.5.1",
       "npm:pg@^8.11.0"
     ]
   }

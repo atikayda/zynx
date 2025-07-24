@@ -309,6 +309,9 @@ export interface DBMLIndex {
   /** Whether index is unique */
   unique?: boolean;
   
+  /** Whether this is a primary key */
+  pk?: boolean;
+  
   /** Index note/comment */
   note?: string;
 }

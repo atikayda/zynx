@@ -29,6 +29,7 @@
 - **🚀 Deno Native**: First-class TypeScript support with modern ESM imports
 - **📊 Migration Tracking**: Comprehensive migration status and history tracking
 - **🔒 Production Ready**: Extensive error handling, validation, and recovery mechanisms
+- **🏷️ Type Generation**: Generate TypeScript, Go, Python, and Rust types from DBML schemas
 
 ## 🏊‍♀️ Quick Start
 
@@ -207,6 +208,9 @@ zynx status [options]
 # Initialize new project
 zynx init
 
+# Generate types from DBML schema
+zynx generate-types --language typescript
+
 # Show help
 zynx --help
 ```
@@ -236,6 +240,20 @@ zynx run --force            # Force apply (use with caution)
 zynx status              # Basic status overview
 zynx status --verbose    # Detailed status with migration lists
 zynx status --json       # JSON output for scripting
+```
+
+#### `zynx generate-types`
+```bash
+zynx generate-types --language typescript      # Generate TypeScript types
+zynx generate-types --language go             # Generate Go structs
+zynx generate-types --language python         # Generate Python dataclasses
+zynx generate-types --language rust           # Generate Rust structs
+zynx generate-types --all                     # Generate types for all languages
+zynx generate-types --all --output ./types/   # Custom output directory
+
+# Language-specific options
+zynx generate-types --language python --pydantic    # Use Pydantic models
+zynx generate-types --language rust --diesel        # Include Diesel derives
 ```
 
 ### Global Options
@@ -363,6 +381,49 @@ const config = createConfig({
 if (isValidConfig(config)) {
   console.log("Configuration is valid");
 }
+```
+
+### Type Generation
+
+```typescript
+import { 
+  DBMLParser,
+  TypeScriptGenerator,
+  GoGenerator,
+  PythonGenerator,
+  RustGenerator 
+} from "@atikayda/zynx";
+
+// Parse DBML schema
+const parser = new DBMLParser();
+const schema = await parser.parse(dbmlContent);
+
+// Generate TypeScript types
+const tsGenerator = new TypeScriptGenerator({
+  addComments: true,
+  enumStyle: "union",
+  dateHandling: "Date"
+});
+const tsTypes = tsGenerator.generateFile(schema);
+
+// Generate Go structs
+const goGenerator = new GoGenerator({
+  namespace: "models"
+});
+const goTypes = goGenerator.generateFile(schema);
+
+// Generate Python dataclasses
+const pyGenerator = new PythonGenerator({
+  pythonStyle: "pydantic"
+});
+const pyTypes = pyGenerator.generateFile(schema);
+
+// Generate Rust structs
+const rustGenerator = new RustGenerator({
+  useSerde: true,
+  deriveTraits: ["Debug", "Clone", "Serialize", "Deserialize"]
+});
+const rustTypes = rustGenerator.generateFile(schema);
 ```
 
 ## 🔧 Migration Files

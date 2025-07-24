@@ -91,7 +91,7 @@ export class PostgreSQLConnection implements DatabaseConnection {
     }
 
     try {
-      const result = await this.client.queryArray(sql, params);
+      const result = await this.client.query(sql, params);
       return result.rows;
     } catch (error) {
       const err = ErrorHandler.fromUnknown(error);
@@ -108,7 +108,7 @@ export class PostgreSQLConnection implements DatabaseConnection {
     }
 
     try {
-      await this.client.queryArray(sql, params);
+      await this.client.query(sql, params);
     } catch (error) {
       const err = ErrorHandler.fromUnknown(error);
       throw new Error(`🚨 Statement execution failed: ${err.message}\nSQL: ${sql}`);
@@ -123,27 +123,30 @@ export class PostgreSQLConnection implements DatabaseConnection {
       throw new Error("🚨 Database not connected");
     }
 
-    const transaction = this.client.createTransaction("zynx_migration");
-    
     try {
-      await transaction.begin();
+      await this.client.query('BEGIN');
       
       const tx: DatabaseTransaction = {
         query: async (sql: string, params: unknown[] = []) => {
-          const result = await transaction.queryArray(sql, params);
+          const result = await this.client.query(sql, params);
           return result.rows;
         },
         execute: async (sql: string, params: unknown[] = []) => {
-          await transaction.queryArray(sql, params);
+          await this.client.query(sql, params);
         }
       };
       
       const result = await callback(tx);
-      await transaction.commit();
+      await this.client.query('COMMIT');
       
       return result;
     } catch (error) {
-      await transaction.rollback();
+      try {
+        await this.client.query('ROLLBACK');
+      } catch (rollbackError) {
+        // Log rollback error but throw original error
+        console.warn('⚠️ Rollback failed:', rollbackError);
+      }
       const err = ErrorHandler.fromUnknown(error);
       throw new Error(`🚨 Transaction failed: ${err.message}`);
     }

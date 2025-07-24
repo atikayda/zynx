@@ -9,6 +9,7 @@ import { RunCommand } from "./commands/run.ts";
 import { StatusCommand } from "./commands/status.ts";
 import { InitCommand } from "./commands/init.ts";
 import { RollbackCommand } from "./commands/rollback.ts";
+import { GenerateTypesCommand } from "./commands/generate-types.ts";
 import type { CLIOptions } from "../types.ts";
 import { ErrorHandler } from "../utils/errors.ts";
 
@@ -45,6 +46,10 @@ export class CLI {
 
       case "rollback":
         await this.runCommand(new RollbackCommand(this.options), commandArgs);
+        break;
+
+      case "generate-types":
+        await this.runCommand(new GenerateTypesCommand(this.options), commandArgs);
         break;
 
       default:

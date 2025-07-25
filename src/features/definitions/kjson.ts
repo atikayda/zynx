@@ -9,6 +9,8 @@ export const kjsonFeature: Feature = {
   name: "kjson",
   description: "BigInt, Instant, and Duration support for PostgreSQL",
   
+  extensions: ["kjson"],
+  
   types: {
     kinstant: {
       sql: "kinstant",

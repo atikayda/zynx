@@ -30,6 +30,7 @@
 - **📊 Migration Tracking**: Comprehensive migration status and history tracking
 - **🔒 Production Ready**: Extensive error handling, validation, and recovery mechanisms
 - **🏷️ Type Generation**: Generate TypeScript, Go, Python, and Rust types from DBML schemas
+- **🔌 Extension Features**: Pre-configured support for common PostgreSQL extensions via the features system
 
 ## 🏊‍♀️ Quick Start
 
@@ -130,6 +131,11 @@ generator:
   addComments: true
   indent: "  "
   lineEnding: "\n"
+
+# Optional: Enable features for PostgreSQL extensions
+features:
+  - kjson      # BigInt, Instant, and Duration support
+  - uuid-ossp  # UUID generation functions
 ```
 
 ### TypeScript Configuration
@@ -155,7 +161,8 @@ export default {
   },
   schema: {
     path: "./database.dbml"
-  }
+  },
+  features: ["kjson", "uuid-ossp"]
 } satisfies ZynxConfig;
 ```
 
@@ -191,6 +198,147 @@ Zynx uses [`@atikayda/kjson`](https://jsr.io/@atikayda/kjson) for enhanced JSON 
 }
 ```
 
+## 🔌 Features System
+
+Zynx includes a powerful features system that provides pre-configured support for common PostgreSQL extensions. Instead of manually configuring type mappings for each extension, you can simply enable features.
+
+### Available Features
+
+#### `kjson` - BigInt, Instant, and Duration Support
+Provides seamless integration with the [`@atikayda/kjson`](https://jsr.io/@atikayda/kjson) package for handling BigInt, Instant, and Duration types in PostgreSQL.
+
+```yaml
+features:
+  - kjson
+```
+
+This feature automatically configures:
+- Type mappings: `kinstant` → `Instant`, `kjson` → `any`, `kduration` → `Duration`, `decimal128` → `Decimal128`
+- Default functions: `kjson_now()` for timestamp defaults
+- Proper imports in generated TypeScript code
+
+#### `uuid-ossp` - UUID Generation
+Enables the `uuid-ossp` PostgreSQL extension for UUID generation.
+
+```yaml
+features:
+  - uuid-ossp
+```
+
+This feature provides:
+- Automatic `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` in migrations
+- UUID type mappings for all supported languages
+- Default functions: `uuid_generate_v4()` for UUID columns
+
+#### `postgis` - Geographic and Spatial Data
+Comprehensive support for PostGIS spatial data types and functions.
+
+```yaml
+features:
+  - postgis
+```
+
+Includes:
+- Geometry and geography type mappings
+- Spatial indexes (GIST)
+- Common spatial functions (ST_Distance, ST_Within, etc.)
+- GeoJSON type mappings for TypeScript
+
+#### `pgcrypto` - Cryptographic Functions
+Cryptographic functions for encryption, hashing, and random generation.
+
+```yaml
+features:
+  - pgcrypto
+```
+
+Provides:
+- Functions: `gen_random_uuid()`, `digest()`, `crypt()`, etc.
+- Can be used as an alternative to `uuid-ossp` for UUID generation
+
+#### `bloom` - Bloom Filter Indexes
+Space-efficient probabilistic data structure for testing set membership.
+
+```yaml
+features:
+  - bloom
+```
+
+Enables:
+- Bloom filter index type with configurable parameters
+- Optimized for multi-column equality searches
+
+### Using Features
+
+#### In Configuration File
+
+```yaml
+# zynx.config.yaml
+features:
+  - kjson
+  - uuid-ossp
+  - postgis
+
+# Features automatically configure type mappings
+# No need to manually specify typeMappings
+```
+
+#### Via CLI
+
+```bash
+# Generate types with features
+zynx generate-types --features kjson,uuid-ossp --language typescript
+
+# Generate migrations with features
+zynx generate --features kjson,uuid-ossp
+```
+
+#### Multiple Features Example
+
+```yaml
+# zynx.config.yaml
+database:
+  type: postgresql
+  connectionString: "postgresql://localhost:5432/myapp"
+
+features:
+  - kjson       # BigInt and time support
+  - uuid-ossp   # UUID functions
+  - postgis     # Spatial data
+  - pgcrypto    # Encryption
+
+schema:
+  path: "./database.dbml"
+```
+
+Your DBML can then use these types naturally:
+
+```dbml
+Table users {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  location geometry(Point)
+  metadata kjson
+  created_at kinstant [default: `kjson_now()`]
+  password_hash text
+}
+```
+
+### Custom Type Mappings
+
+Features can be combined with custom type mappings. Custom mappings take precedence:
+
+```yaml
+features:
+  - kjson
+
+schema:
+  typeMappings:
+    # Override kjson's default mapping
+    kinstant: "timestamp with time zone"
+    # Add custom type
+    money: "decimal(19,4)"
+```
+
 ## 🖥️ CLI Commands
 
 ### Core Commands
@@ -224,6 +372,7 @@ zynx generate --name "add-user-table"   # Custom migration name
 zynx generate --dry-run                 # Preview changes without creating files
 zynx generate --schema "./custom.dbml"  # Use custom schema file
 zynx generate --force                   # Force generation even if no changes
+zynx generate --features kjson,uuid-ossp # Generate with specific features
 ```
 
 #### `zynx run`
@@ -250,6 +399,10 @@ zynx generate-types --language python         # Generate Python dataclasses
 zynx generate-types --language rust           # Generate Rust structs
 zynx generate-types --all                     # Generate types for all languages
 zynx generate-types --all --output ./types/   # Custom output directory
+
+# With features
+zynx generate-types --language typescript --features kjson,uuid-ossp
+zynx generate-types --all --features kjson,postgis
 
 # Language-specific options
 zynx generate-types --language python --pydantic    # Use Pydantic models
@@ -394,15 +547,29 @@ import {
   RustGenerator 
 } from "@atikayda/zynx";
 
-// Parse DBML schema
-const parser = new DBMLParser();
+// Parse DBML schema with features
+const parser = new DBMLParser({
+  typeMappings: {
+    kinstant: "kinstant",
+    kjson: "kjson",
+    uuid: "uuid"
+  }
+});
 const schema = await parser.parse(dbmlContent);
 
-// Generate TypeScript types
+// Generate TypeScript types with feature support
 const tsGenerator = new TypeScriptGenerator({
   addComments: true,
   enumStyle: "union",
-  dateHandling: "Date"
+  dateHandling: "Date",
+  customTypes: {
+    kinstant: "Instant",
+    kjson: "any",
+    uuid: "string"
+  },
+  imports: {
+    Instant: "@atikayda/kjson"
+  }
 });
 const tsTypes = tsGenerator.generateFile(schema);
 
@@ -424,6 +591,44 @@ const rustGenerator = new RustGenerator({
   deriveTraits: ["Debug", "Clone", "Serialize", "Deserialize"]
 });
 const rustTypes = rustGenerator.generateFile(schema);
+```
+
+### Features API
+
+```typescript
+import { 
+  validateFeatures,
+  listFeatures,
+  getLanguageTypeMappings,
+  getSQLTypeMappings 
+} from "@atikayda/zynx/features";
+
+// List all available features
+const features = listFeatures();
+console.log("Available features:");
+features.forEach(f => {
+  console.log(`- ${f.name}: ${f.description}`);
+});
+
+// Validate feature names
+try {
+  validateFeatures(["kjson", "uuid-ossp"]);
+  console.log("Features are valid!");
+} catch (error) {
+  console.error("Invalid feature:", error.message);
+}
+
+// Get type mappings for a specific language
+const { customTypes, imports } = getLanguageTypeMappings(
+  ["kjson", "uuid-ossp"], 
+  "typescript"
+);
+console.log("TypeScript types:", customTypes);
+console.log("Required imports:", imports);
+
+// Get SQL type mappings for DBML parser
+const sqlMappings = getSQLTypeMappings(["kjson", "postgis"]);
+console.log("SQL mappings:", sqlMappings);
 ```
 
 ## 🔧 Migration Files
@@ -452,6 +657,73 @@ CREATE INDEX idx_users_email ON users(email);
 -- Insert migration record
 INSERT INTO zynx_migrations (number, name, checksum, executed_at) 
 VALUES (1, 'add_user_table', 'sha256:abc123...', now());
+
+COMMIT;
+```
+
+### With Features Enabled
+
+When features are enabled, Zynx intelligently manages extensions:
+
+#### Initial Migration
+The first migration includes all necessary extensions:
+
+```sql
+-- Migration: 0001_initial_schema
+-- Generated: 2024-01-15T10:30:00Z
+-- Zynx Version: 1.0.0
+-- Features: kjson, uuid-ossp
+
+BEGIN;
+
+-- Create extensions (from features)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create users table with feature types
+CREATE TABLE users (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  metadata kjson,
+  created_at kinstant DEFAULT kjson_now(),
+  updated_at kinstant DEFAULT kjson_now()
+);
+
+COMMIT;
+```
+
+#### Subsequent Migrations
+Regular migrations don't include extension statements:
+
+```sql
+-- Migration: 0002_add_posts_table
+-- Generated: 2024-01-16T10:30:00Z
+
+BEGIN;
+
+CREATE TABLE posts (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title text NOT NULL,
+  created_at kinstant DEFAULT kjson_now()
+);
+
+COMMIT;
+```
+
+#### Adding New Features
+When you add a new feature requiring extensions:
+
+```sql
+-- Migration: 0003_add_location_support
+-- Generated: 2024-01-17T10:30:00Z
+-- New Features: postgis
+
+BEGIN;
+
+-- Create newly required extensions
+CREATE EXTENSION IF NOT EXISTS "postgis";
+CREATE EXTENSION IF NOT EXISTS "postgis_topology";
+
+-- Add location column using new feature
+ALTER TABLE users ADD COLUMN location geometry(Point);
 
 COMMIT;
 ```

@@ -17,6 +17,14 @@ import type {
 } from "../types.ts";
 
 /**
+ * Options for DBMLParser
+ */
+export interface DBMLParserOptions {
+  /** Custom type mappings to override defaults */
+  typeMappings?: Record<string, string>;
+}
+
+/**
  * DBML Parser for converting DBML strings to structured schema objects
  * 
  * @example
@@ -25,12 +33,22 @@ import type {
  * const schema = await parser.parse(dbmlContent);
  * console.log(schema.tables);
  * ```
+ * 
+ * @example With custom type mappings
+ * ```typescript
+ * const parser = new DBMLParser({
+ *   typeMappings: {
+ *     "kinstant": "kinstant",
+ *     "kjson": "kjson"
+ *   }
+ * });
+ * ```
  */
 export class DBMLParser {
   private parser: Parser;
 
-  constructor() {
-    this.parser = new Parser();
+  constructor(options?: DBMLParserOptions) {
+    this.parser = new Parser(options);
   }
 
   /**

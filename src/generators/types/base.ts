@@ -228,6 +228,9 @@ export interface TypeGeneratorConfig {
   /** Custom type mappings */
   customTypes?: Record<string, string>;
   
+  /** Import mappings: type -> module to import from */
+  imports?: Record<string, string>;
+  
   /** Whether to generate relationship types */
   includeRelationships?: boolean;
   

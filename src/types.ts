@@ -24,6 +24,12 @@ export interface ZynxConfig {
   /** Generator configuration */
   generator?: GeneratorConfig;
   
+  /** Type generators configuration */
+  generators?: GeneratorsConfig;
+  
+  /** Features to enable (e.g., kjson, postgis, uuid-ossp) */
+  features?: string[];
+  
   /** Optional hooks for custom behavior */
   hooks?: ZynxHooks;
   
@@ -452,6 +458,59 @@ export interface SchemaConfig {
   
   /** File encoding */
   encoding?: "utf8";
+  
+  /** Custom type mappings for DBML parser */
+  typeMappings?: Record<string, string>;
+}
+
+/**
+ * Type generators configuration
+ */
+export interface GeneratorsConfig {
+  /** Custom type definitions for all languages */
+  types?: Record<string, TypeDefinition>;
+  
+  /** Language-specific overrides */
+  typescript?: LanguageGeneratorConfig;
+  python?: LanguageGeneratorConfig;
+  go?: LanguageGeneratorConfig;
+  rust?: LanguageGeneratorConfig;
+}
+
+/**
+ * Type definition for a custom type across languages
+ */
+export interface TypeDefinition {
+  /** TypeScript type mapping */
+  typescript?: LanguageTypeMapping;
+  /** Python type mapping */
+  python?: LanguageTypeMapping;
+  /** Go type mapping */
+  go?: LanguageTypeMapping;
+  /** Rust type mapping */
+  rust?: LanguageTypeMapping;
+}
+
+/**
+ * Language-specific type mapping
+ */
+export interface LanguageTypeMapping {
+  /** The type to use in generated code */
+  type: string;
+  /** Module to import from (optional) */
+  import?: string;
+}
+
+/**
+ * Language-specific generator configuration
+ */
+export interface LanguageGeneratorConfig {
+  /** Override custom types for this language */
+  customTypes?: Record<string, string>;
+  /** Override imports for this language */
+  imports?: Record<string, string>;
+  /** Additional language-specific options */
+  options?: Record<string, any>;
 }
 
 /**

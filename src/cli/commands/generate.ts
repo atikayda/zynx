@@ -10,6 +10,7 @@ import type { CLIOptions } from "../../types.ts";
 import { ZynxManager } from "../../core/zynx-manager.ts";
 import { ErrorHandler } from "../../utils/errors.ts";
 import { loadConfig } from "../../utils/config.ts";
+import { applyFeatures, validateFeatures, getExtensionSQL } from "../../features/index.ts";
 
 export class GenerateCommand implements Command {
   constructor(private options: CLIOptions) {}
@@ -17,10 +18,11 @@ export class GenerateCommand implements Command {
   async execute(args: string[]): Promise<void> {
     const parsed = parseArgs(args, {
       boolean: ["dry-run", "force"],
-      string: ["name", "schema"],
+      string: ["name", "schema", "features"],
       alias: {
         n: "name",
-        s: "schema"
+        s: "schema",
+        f: "features"
       }
     });
 
@@ -28,6 +30,24 @@ export class GenerateCommand implements Command {
     
     // Load configuration
     const config = await loadConfig(this.options.configPath);
+    
+    // Apply features if specified
+    let features: string[] = [];
+    if (parsed.features) {
+      features = parsed.features.split(',').map((f: string) => f.trim());
+    } else if (config.features) {
+      features = config.features;
+    }
+    
+    if (features.length > 0) {
+      validateFeatures(features);
+      
+      // Store features for migration generation
+      (config as any).enabledFeatures = features;
+      
+      // Note: Feature SQL type mappings are applied in ZynxManager constructor
+      // via getSQLTypeMappings() to ensure proper string-to-string mappings
+    }
     
     // Override schema path if provided
     if (parsed.schema) {
@@ -83,10 +103,11 @@ USAGE:
   zynx generate [options]
 
 OPTIONS:
-  -n, --name <name>     Custom migration name
-  -s, --schema <path>   Override DBML schema file path
-  --dry-run             Preview changes without creating files
-  --force               Force generation even if no changes detected
+  -n, --name <name>        Custom migration name
+  -s, --schema <path>      Override DBML schema file path
+  --features <features>    Comma-separated list of features (kjson,uuid-ossp,postgis,etc.)
+  --dry-run                Preview changes without creating files
+  --force                  Force generation even if no changes detected
 
 EXAMPLES:
   zynx generate                           # Generate from default schema
@@ -94,6 +115,7 @@ EXAMPLES:
   zynx generate --dry-run                 # Preview changes
   zynx generate --schema "./custom.dbml"  # Use custom schema file
   zynx generate --force                   # Force generation
+  zynx generate --features kjson,uuid-ossp # Generate with features
 
 The generated migration will be numbered sequentially (0001.sql, 0002.sql, etc.)
 and will include all necessary SQL to update your database schema.

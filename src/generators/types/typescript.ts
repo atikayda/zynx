@@ -13,6 +13,31 @@ export class TypeScriptGenerator extends TypeGenerator {
 
   override getImports(schema: DatabaseSchema): string[] {
     const imports: string[] = [];
+    const importMap = new Map<string, Set<string>>(); // module -> types to import
+    
+    // Collect all used types that need imports
+    for (const table of schema.tables) {
+      for (const field of table.fields) {
+        const baseType = this.getBaseType(field.type);
+        const mappedType = this.config.customTypes?.[baseType];
+        
+        if (mappedType && this.config.imports?.[mappedType]) {
+          const module = this.config.imports[mappedType];
+          if (!importMap.has(module)) {
+            importMap.set(module, new Set());
+          }
+          importMap.get(module)!.add(mappedType);
+        }
+      }
+    }
+    
+    // Generate import statements
+    for (const [module, types] of importMap.entries()) {
+      if (types.size > 0) {
+        const typeList = Array.from(types).sort().join(", ");
+        imports.push(`import { ${typeList} } from "${module}";`);
+      }
+    }
     
     // Check if we need Date type
     if (this.config.dateHandling === "Date") {

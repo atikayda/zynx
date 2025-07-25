@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@atikayda/dbml-pg@*": "1.0.1",
     "jsr:@atikayda/dbml-pg@1.0.1": "1.0.1",
     "jsr:@atikayda/kjson@1": "1.0.1",
     "jsr:@std/cli@1": "1.0.20",

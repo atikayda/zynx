@@ -11,6 +11,8 @@ import { PostgreSQLGenerator } from "../generators/postgresql.ts";
 import { createDatabaseConnection, DatabaseUtils, type DatabaseConnection } from "../utils/db-utils.ts";
 import { FileManager } from "../utils/file-utils.ts";
 import { ErrorHandler } from "../utils/errors.ts";
+import { MigrationMetaManager } from "../utils/meta.ts";
+import { getExtensionSQL, featureRegistry, getSQLTypeMappings } from "../features/index.ts";
 import type {
   ZynxConfig,
   GenerateOptions,
@@ -57,15 +59,28 @@ export class ZynxManager {
   private db: DatabaseConnection;
   private dbUtils: DatabaseUtils;
   private files: FileManager;
+  private meta: MigrationMetaManager;
 
   constructor(config: ZynxConfig) {
     this.config = config;
-    this.parser = new DBMLParser();
+    
+    // Get feature type mappings
+    const features = (config as any).enabledFeatures || config.features || [];
+    const featureSQLMappings = getSQLTypeMappings(features);
+    
+    // Merge custom type mappings with feature mappings
+    const typeMappings = {
+      ...featureSQLMappings,
+      ...config.schema?.typeMappings
+    };
+    
+    this.parser = new DBMLParser({ typeMappings });
     this.differ = new SchemaDiffer();
     this.generator = new PostgreSQLGenerator();
     this.db = createDatabaseConnection(config.database);
     this.dbUtils = new DatabaseUtils(this.db);
     this.files = new FileManager(config.migrations.directory);
+    this.meta = new MigrationMetaManager(config.migrations.directory);
   }
 
   /**
@@ -113,8 +128,27 @@ export class ZynxManager {
         };
       }
       
+      // Check for feature changes
+      const features = (this.config as any).enabledFeatures || this.config.features || [];
+      const { added: newFeatures } = await this.meta.updateFeatures(features);
+      
+      // Generate extension SQL for new features
+      let extensionSQL = "";
+      if (newFeatures.length > 0) {
+        const newExtensions = getExtensionSQL(newFeatures);
+        if (newExtensions.length > 0) {
+          extensionSQL = "-- New features: " + newFeatures.join(", ") + "\n";
+          extensionSQL += newExtensions.join("\n") + "\n\n";
+          
+          // Track new extensions
+          const extensionNames = featureRegistry.getExtensions(newFeatures);
+          await this.meta.updateExtensions(extensionNames);
+        }
+      }
+      
       // Generate migration SQL
-      const migrationSql = await this.generator.generateMigrationSQL(changes);
+      const baseMigrationSql = await this.generator.generateMigrationSQL(changes);
+      const migrationSql = extensionSQL + baseMigrationSql;
       
       if (options.dryRun) {
         return {
@@ -131,6 +165,9 @@ export class ZynxManager {
       const filename = `${migrationNumber.toString().padStart(4, '0')}.sql`;
       
       await this.files.writeFile(filename, migrationSql);
+      
+      // Update metadata
+      await this.meta.updateMigration(migrationNumber);
       
       // Update snapshots
       await this.updateSnapshots(currentDbml, currentSchema);
@@ -237,6 +274,9 @@ export class ZynxManager {
         
         migrationsApplied.push(migrationStatus);
         console.log(`  ✅ Migration ${migration.filename} completed`);
+        
+        // Update metadata with latest migration
+        await this.meta.updateMigration(migration.number);
       }
       
       const finalMigration = migrationsApplied.length > 0 
@@ -382,7 +422,27 @@ export class ZynxManager {
   private async generateInitialSnapshot(schema: any, options: GenerateOptions): Promise<GenerationResult> {
     console.log("🌊 Creating initial schema migration...");
     
-    const sql = await this.generator.generateCreateSchema(schema);
+    // Initialize metadata
+    const features = (this.config as any).enabledFeatures || this.config.features || [];
+    const meta = await this.meta.initialize("1.0.0", features);
+    
+    // Get extension SQL for all features (initial migration includes all)
+    let extensionSQL = "";
+    if (features.length > 0) {
+      const extensions = getExtensionSQL(features);
+      if (extensions.length > 0) {
+        extensionSQL = extensions.join("\n") + "\n\n";
+        // Track deployed extensions
+        const extensionNames = featureRegistry.getExtensions(features);
+        await this.meta.updateExtensions(extensionNames);
+      }
+    }
+    
+    // Generate base schema SQL
+    const baseSql = await this.generator.generateCreateSchema(schema);
+    
+    // Combine extension SQL with schema SQL
+    const sql = extensionSQL + baseSql;
     
     if (options.dryRun) {
       return {
@@ -397,12 +457,18 @@ export class ZynxManager {
     // Write the initial migration as 0001.sql
     await this.files.writeFile("0001.sql", sql);
     
+    // Update metadata
+    await this.meta.updateMigration(1);
+    
     // Also create snapshots for future comparisons
     await this.files.writeFile("snapshot.sql", sql);
     const currentDbml = await this.readSchemaFile();
     await this.files.writeFile("snapshot.dbml", currentDbml);
     
     console.log("📄 Created initial migration: 0001.sql");
+    if (features.length > 0) {
+      console.log(`🔌 Included features: ${features.join(", ")}`);
+    }
     
     return {
       filename: "0001.sql",

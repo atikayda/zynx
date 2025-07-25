@@ -9,6 +9,7 @@ import { ConfigValidator } from "./validation.ts";
 import { ConfigError, ErrorHandler } from "./errors.ts";
 import { parse as parseYaml } from "@std/yaml";
 import { parse as parseJson } from "@atikayda/kjson";
+import { applyFeatures, validateFeatures, getSQLTypeMappings } from "../features/index.ts";
 
 /**
  * Create a Zynx configuration with intelligent defaults
@@ -144,7 +145,21 @@ export async function loadConfig(configPath?: string): Promise<ZynxConfig> {
     // Validate the loaded configuration
     ConfigValidator.validate(config);
     
-    return config as ZynxConfig;
+    // Apply features if specified
+    const zynxConfig = config as ZynxConfig;
+    if (zynxConfig.features && zynxConfig.features.length > 0) {
+      validateFeatures(zynxConfig.features);
+      // Get SQL type mappings for DBML parser
+      const sqlTypeMappings = getSQLTypeMappings(zynxConfig.features);
+      
+      // Apply SQL type mappings
+      if (!zynxConfig.schema) {
+        zynxConfig.schema = {} as SchemaConfig;
+      }
+      zynxConfig.schema.typeMappings = sqlTypeMappings;
+    }
+    
+    return zynxConfig;
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
       throw new ConfigError(

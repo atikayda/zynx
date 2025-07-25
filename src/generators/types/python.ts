@@ -23,17 +23,55 @@ export class PythonGenerator extends TypeGenerator {
 
   override getImports(schema: DatabaseSchema): string[] {
     const imports: string[] = [];
-    const typingImports = new Set<string>();
+    const importMap = new Map<string, Set<string>>(); // module -> types to import
+    const typingImports = new Set<string>(["Optional"]);
     
     // Add base imports based on style
     if (this.pythonStyle === "dataclass") {
       imports.push("from dataclasses import dataclass, field");
-      imports.push("from typing import Optional, List, Dict, Any, Union");
     } else if (this.pythonStyle === "typeddict") {
-      imports.push("from typing import TypedDict, Optional, List, Dict, Any, Union");
+      typingImports.add("TypedDict");
     } else if (this.pythonStyle === "pydantic") {
       imports.push("from pydantic import BaseModel, Field");
-      imports.push("from typing import Optional, List, Dict, Any, Union");
+    }
+    
+    // Collect all used types that need imports
+    for (const table of schema.tables) {
+      for (const field of table.fields) {
+        const baseType = this.getBaseType(field.type);
+        const mappedType = this.config.customTypes?.[baseType];
+        
+        if (mappedType && this.config.imports?.[mappedType]) {
+          const module = this.config.imports[mappedType];
+          if (module === "typing") {
+            typingImports.add(mappedType);
+          } else {
+            if (!importMap.has(module)) {
+              importMap.set(module, new Set());
+            }
+            importMap.get(module)!.add(mappedType);
+          }
+        }
+        
+        // Check for collection types
+        if (this.isArrayType(field.type)) {
+          typingImports.add("List");
+        }
+      }
+    }
+    
+    // Add typing imports
+    if (typingImports.size > 0) {
+      const typeList = Array.from(typingImports).sort().join(", ");
+      imports.push(`from typing import ${typeList}`);
+    }
+    
+    // Generate other module imports
+    for (const [module, types] of importMap.entries()) {
+      if (types.size > 0) {
+        const typeList = Array.from(types).sort().join(", ");
+        imports.push(`from ${module} import ${typeList}`);
+      }
     }
     
     // Check for datetime usage

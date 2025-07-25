@@ -26,7 +26,21 @@ import type {
 export class PostgreSQLGenerator extends BaseGenerator {
   name = "postgresql";
   dialect = "postgresql" as const;
+  
+  // Track tables that already have primary keys
+  private tablesWithPrimaryKeys = new Set<string>();
 
+  /**
+   * Generate complete schema SQL
+   */
+  override generateCompleteSchema(schema: DatabaseSchema): string {
+    // Clear tracking set for new generation
+    this.tablesWithPrimaryKeys.clear();
+    
+    // Call parent implementation
+    return super.generateCompleteSchema(schema);
+  }
+  
   /**
    * Generate complete schema SQL (alias for generateCompleteSchema)
    */
@@ -69,6 +83,12 @@ export class PostgreSQLGenerator extends BaseGenerator {
    */
   generateCreateTable(table: DBMLTable): string {
     this.validateTable(table);
+    
+    // Check if any field has primary key
+    const hasPrimaryKey = table.fields.some(field => field.pk);
+    if (hasPrimaryKey) {
+      this.tablesWithPrimaryKeys.add(table.name);
+    }
 
     const fields = table.fields.map(field => this.generateFieldSQL(field));
     let sql = `CREATE TABLE ${this.escapeIdentifier(table.name)} (\n  ${fields.join(',\n  ')}\n);`;
@@ -142,6 +162,12 @@ export class PostgreSQLGenerator extends BaseGenerator {
   generateCreateIndex(index: DBMLIndex): string {
     // Handle composite primary keys as constraints, not indexes
     if (index.pk) {
+      // Skip if table already has a primary key from field definition
+      if (this.tablesWithPrimaryKeys.has(index.tableName)) {
+        // Convert to unique index instead
+        const indexName = index.name || `idx_${index.tableName}_${index.columns.join('_')}`;
+        return `CREATE UNIQUE INDEX ${this.escapeIdentifier(indexName)} ON ${this.escapeIdentifier(index.tableName)} (${index.columns.map(col => this.escapeIdentifier(col)).join(', ')});`;
+      }
       return this.generatePrimaryKeyConstraint(index);
     }
     
@@ -422,17 +448,18 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @returns string - Formatted default value
    */
   protected override formatDefaultValue(defaultValue: string, fieldType: string): string {
-    // Handle PostgreSQL-specific functions
-    if (defaultValue.includes('gen_random_uuid()')) {
-      return 'gen_random_uuid()';
-    }
-    
-    if (defaultValue.includes('now()')) {
+    // Handle specific SQL keywords/functions that need case transformation
+    const lowerValue = defaultValue.toLowerCase();
+    if (lowerValue === 'now()') {
       return 'NOW()';
     }
-    
-    if (defaultValue.includes('current_timestamp')) {
+    if (lowerValue === 'current_timestamp') {
       return 'CURRENT_TIMESTAMP';
+    }
+    
+    // Preserve any function calls as-is (anything with parentheses)
+    if (defaultValue.includes('(') && defaultValue.includes(')')) {
+      return defaultValue;
     }
     
     // Handle JSONB defaults

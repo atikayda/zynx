@@ -47,6 +47,14 @@ export const kjsonFeature: Feature = {
       returns: "kinstant",
       sql: "kjson_now()"
     },
+    k_now: {
+      returns: "kinstant",
+      sql: "k_now()"
+    },
+    k_uuid: {
+      returns: "uuid",
+      sql: "k_uuid()"
+    },
     kjson_duration: {
       returns: "kduration",
       sql: "kjson_duration(interval)",

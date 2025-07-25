@@ -1,6 +1,6 @@
 {
   "name": "@atikayda/zynx",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "🦎 The Axolotl-Powered DBML Migration System for Deno - Generate and manage PostgreSQL migrations from DBML schemas with intelligent diffing, transaction safety, multi-format configuration (YAML, JSON with kjson, TypeScript), and comprehensive CLI tools",
   "license": "MIT",
   "author": "Atikayda",

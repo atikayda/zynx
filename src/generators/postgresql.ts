@@ -333,34 +333,9 @@ export class PostgreSQLGenerator extends BaseGenerator {
    * @returns string | null - Setup SQL
    */
   protected override generateSetup(schema: DatabaseSchema): string | null {
-    const setup: string[] = [];
-    
-    // Check if UUID extension is needed
-    const needsUuidExtension = schema.tables.some(table =>
-      table.fields.some(field => 
-        field.type.toLowerCase().includes('uuid') || 
-        field.default?.includes('gen_random_uuid()')
-      )
-    );
-    
-    if (needsUuidExtension) {
-      setup.push('-- Enable UUID extension');
-      setup.push('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
-    }
-    
-    // Check if crypto extension is needed
-    const needsCryptoExtension = schema.tables.some(table =>
-      table.fields.some(field => 
-        field.default?.includes('gen_random_uuid()')
-      )
-    );
-    
-    if (needsCryptoExtension) {
-      setup.push('-- Enable pgcrypto extension for gen_random_uuid()');
-      setup.push('CREATE EXTENSION IF NOT EXISTS "pgcrypto";');
-    }
-    
-    return setup.length > 0 ? setup.join('\n') : null;
+    // Extensions should only be added through the features system
+    // No auto-detection of extensions based on schema content
+    return null;
   }
 
   /**
